@@ -12,84 +12,80 @@ export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-export async function sendDiscordMessage(text) {
-  // --- METHOD 1: Focus-free contenteditable injection ---
-  let chatInput = document.querySelector('div[role="textbox"]');
+// Track status per feature (used by UI indicators)
+export const featureStatus = {}; // e.g., { hunt: 'success' | 'fail' | 'idle' }
+export function setFeatureStatus(feature, status) {
+  featureStatus[feature] = status;
+  // Dispatch a custom event so UI can update
+  window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
+}
+
+export async function sendDiscordMessage(text, feature = 'general') {
+  // --- METHOD 1: Discord API (no keyboard) ---
+  let token = null;
+  try {
+    token = localStorage.getItem('token') || window.localStorage.token || sessionStorage.getItem('token');
+  } catch (e) {}
+  if (token) {
+    const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
+    if (match) {
+      const channelId = match[1];
+      const headers = {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'Origin': 'https://discord.com',
+        'Referer': window.location.href,
+        'X-Super-Properties': btoa(JSON.stringify({
+          os: "Android", browser: "Chrome", device: "",
+          system_locale: "en-US",
+          browser_user_agent: navigator.userAgent,
+          browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0",
+          os_version: "Android",
+          release_channel: "stable", client_build_number: "0"
+        }))
+      };
+      try {
+        const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+          method: 'POST', headers: headers, body: JSON.stringify({ content: text })
+        });
+        if (response.ok) {
+          console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+          setFeatureStatus(feature, 'success');
+          return true;
+        } else {
+          console.error(`[Auto Pulse] API error ${response.status}: ${await response.text()}`);
+        }
+      } catch (e) {
+        console.error('[Auto Pulse] API network error:', e);
+      }
+    }
+  }
+
+  // --- METHOD 2: DOM injection without focus (no keyboard) ---
+  const chatInput = document.querySelector('div[role="textbox"]');
   if (chatInput) {
     try {
-      // Set text without focusing
-      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      // For contenteditable div, we need to set innerText and dispatch input
+      // Insert text without focus (works on Discord)
       chatInput.innerText = text;
       chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
-      
       // Click send button
-      const sendBtn = document.querySelector('button[aria-label="Send"]') || 
-                      document.querySelector('button[aria-label="Send Message"]') || 
+      const sendBtn = document.querySelector('button[aria-label="Send"]') ||
+                      document.querySelector('button[aria-label="Send Message"]') ||
                       document.querySelector('button[class*="send"]') ||
                       document.querySelector('form button[type="submit"]');
       if (sendBtn) {
         sendBtn.click();
-        console.log(`%c[Auto Pulse] Sent (focus-free): ${text}`, 'color:#00ff00;font-weight:bold;');
+        console.log(`%c[Auto Pulse] DOM Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+        setFeatureStatus(feature, 'success');
         return true;
       }
     } catch (e) {
-      console.error('[Auto Pulse] Focus-free failed, trying paste method', e);
+      console.error('[Auto Pulse] DOM injection failed:', e);
     }
   }
 
-  // --- METHOD 2: Paste without focus (fallback) ---
-  if (chatInput) {
-    try {
-      const dt = new DataTransfer();
-      dt.setData('text/plain', text);
-      const pasteEvent = new ClipboardEvent('paste', {
-        clipboardData: dt,
-        bubbles: true,
-        cancelable: true
-      });
-      chatInput.dispatchEvent(pasteEvent);
-      
-      // Click send button
-      const sendBtn = document.querySelector('button[aria-label="Send"]') || 
-                      document.querySelector('button[aria-label="Send Message"]') || 
-                      document.querySelector('button[class*="send"]') ||
-                      document.querySelector('form button[type="submit"]');
-      if (sendBtn) {
-        sendBtn.click();
-        console.log(`%c[Auto Pulse] Sent (paste no-focus): ${text}`, 'color:#00ff00;font-weight:bold;');
-        return true;
-      }
-    } catch (e) {
-      console.error('[Auto Pulse] Paste fallback failed', e);
-    }
-  }
-
-  // --- METHOD 3: API (last resort, needs token) ---
-  let token = localStorage.getItem('token') || window.localStorage.token;
-  if (!token) {
-    console.error('[Auto Pulse] All methods failed. No token found.');
-    return false;
-  }
-  const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
-  if (!match) return false;
-  const channelId = match[1];
-  try {
-    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: {
-        'Authorization': token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ content: text })
-    });
-    if (response.ok) {
-      console.log(`%c[Auto Pulse] Sent (API): ${text}`, 'color:#00ff00;font-weight:bold;');
-      return true;
-    }
-  } catch (e) {
-    console.error('[Auto Pulse] API failed', e);
-  }
+  setFeatureStatus(feature, 'fail');
   return false;
 }
 
@@ -134,4 +130,4 @@ export function triggerNotification(msg) {
   if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
     new Notification("⚠️ Auto Pulse Alert!", { body: msg });
   }
-}
+         }
