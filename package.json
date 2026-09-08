@@ -1,1 +1,7 @@
-
+{
+  "name": "auto-pulse",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "build": "node build.js" },
+  "devDependencies": { "esbuild": "^0.20.0" }
+}
