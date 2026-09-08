@@ -13,66 +13,84 @@ export function sleep(ms) {
 }
 
 export async function sendDiscordMessage(text) {
-  // 1. Get Token (multi-fallback)
-  let token = localStorage.getItem('token') || window.localStorage.token || sessionStorage.getItem('token');
+  // --- METHOD 1: Focus-free contenteditable injection ---
+  let chatInput = document.querySelector('div[role="textbox"]');
+  if (chatInput) {
+    try {
+      // Set text without focusing
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      // For contenteditable div, we need to set innerText and dispatch input
+      chatInput.innerText = text;
+      chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+      
+      // Click send button
+      const sendBtn = document.querySelector('button[aria-label="Send"]') || 
+                      document.querySelector('button[aria-label="Send Message"]') || 
+                      document.querySelector('button[class*="send"]') ||
+                      document.querySelector('form button[type="submit"]');
+      if (sendBtn) {
+        sendBtn.click();
+        console.log(`%c[Auto Pulse] Sent (focus-free): ${text}`, 'color:#00ff00;font-weight:bold;');
+        return true;
+      }
+    } catch (e) {
+      console.error('[Auto Pulse] Focus-free failed, trying paste method', e);
+    }
+  }
+
+  // --- METHOD 2: Paste without focus (fallback) ---
+  if (chatInput) {
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const pasteEvent = new ClipboardEvent('paste', {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true
+      });
+      chatInput.dispatchEvent(pasteEvent);
+      
+      // Click send button
+      const sendBtn = document.querySelector('button[aria-label="Send"]') || 
+                      document.querySelector('button[aria-label="Send Message"]') || 
+                      document.querySelector('button[class*="send"]') ||
+                      document.querySelector('form button[type="submit"]');
+      if (sendBtn) {
+        sendBtn.click();
+        console.log(`%c[Auto Pulse] Sent (paste no-focus): ${text}`, 'color:#00ff00;font-weight:bold;');
+        return true;
+      }
+    } catch (e) {
+      console.error('[Auto Pulse] Paste fallback failed', e);
+    }
+  }
+
+  // --- METHOD 3: API (last resort, needs token) ---
+  let token = localStorage.getItem('token') || window.localStorage.token;
   if (!token) {
-    console.error('[Auto Pulse] Token not found. Please log into Discord Web in this browser.');
+    console.error('[Auto Pulse] All methods failed. No token found.');
     return false;
   }
-
-  // 2. Get Channel ID (handles both Servers and DMs)
   const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
-  if (!match) {
-    console.error('[Auto Pulse] Channel ID not found. Open a channel or DM.');
-    return false;
-  }
+  if (!match) return false;
   const channelId = match[1];
-
-  // 3. Headers (Crucial to avoid 403 errors)
-  const headers = {
-    'Authorization': token,
-    'Content-Type': 'application/json',
-    'Accept': '*/*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Origin': 'https://discord.com',
-    'Referer': window.location.href,
-    'X-Super-Properties': btoa(JSON.stringify({
-      os: "Android",
-      browser: "Chrome",
-      device: "",
-      system_locale: "en-US",
-      browser_user_agent: navigator.userAgent,
-      browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0",
-      os_version: "Android",
-      referrer: "",
-      referring_domain: "",
-      referrer_current: "",
-      referring_domain_current: "",
-      release_channel: "stable",
-      client_build_number: "0",
-      client_event_source: null
-    }))
-  };
-
-  // 4. Send via API
   try {
     const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
       method: 'POST',
-      headers: headers,
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ content: text })
     });
-
     if (response.ok) {
-      console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+      console.log(`%c[Auto Pulse] Sent (API): ${text}`, 'color:#00ff00;font-weight:bold;');
       return true;
-    } else {
-      console.error(`[Auto Pulse] API Error ${response.status}`);
-      return false;
     }
   } catch (e) {
-    console.error('[Auto Pulse] Network Error:', e);
-    return false;
+    console.error('[Auto Pulse] API failed', e);
   }
+  return false;
 }
 
 export function scanChat() {
@@ -116,4 +134,4 @@ export function triggerNotification(msg) {
   if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
     new Notification("⚠️ Auto Pulse Alert!", { body: msg });
   }
-    }
+}
