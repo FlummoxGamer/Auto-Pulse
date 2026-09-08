@@ -11,7 +11,6 @@ let cycleCounter = 0;
 let lastPrayTime = 0;
 let startStopBtn = null;
 
-// UI status indicator elements
 const statusDots = {};
 
 function startKeepAlive() {
@@ -27,11 +26,9 @@ function startKeepAlive() {
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
-    // Resume if suspended (ensures playback after user gesture)
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    console.log('[Keep-Alive] Started');
   } catch (e) {
-    console.warn('[Keep-Alive] Failed to start');
+    console.warn('[Keep-Alive] Failed');
   }
 }
 
@@ -53,9 +50,7 @@ async function autoGems() {
   const ownedGemIds = new Set();
   const gemRegex = /(\d{3})\s*(?:\[|x)?\s*(\d+)/g;
   let match;
-  while ((match = gemRegex.exec(invText)) !== null) {
-    ownedGemIds.add(match[1]);
-  }
+  while ((match = gemRegex.exec(invText)) !== null) ownedGemIds.add(match[1]);
   for (const [category, ids] of Object.entries(GEM_TYPES)) {
     for (const id of ids) {
       if (ownedGemIds.has(id)) {
@@ -83,13 +78,13 @@ async function runFarmPipeline() {
     }
 
     if (bankroll.isOverBudget()) {
-      stopBot();
       triggerNotification('Loss limit reached! Bot stopped.');
+      stopBot();
       return;
     }
     if (bankroll.isProfitTargetHit()) {
-      stopBot();
       triggerNotification('Profit target reached! Bot stopped.');
+      stopBot();
       return;
     }
 
@@ -102,9 +97,7 @@ async function runFarmPipeline() {
     if (CONFIG.ENABLE_BATTLE) {
       await sendDiscordMessage('owo b', 'battle');
       const elapsed = Date.now() - startTime;
-      if (elapsed < CONFIG.HUNT_BATTLE_INTERVAL) {
-        await sleep(CONFIG.HUNT_BATTLE_INTERVAL - elapsed);
-      }
+      if (elapsed < CONFIG.HUNT_BATTLE_INTERVAL) await sleep(CONFIG.HUNT_BATTLE_INTERVAL - elapsed);
     }
 
     if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
@@ -139,7 +132,6 @@ async function runFarmPipeline() {
   } catch (e) {
     console.error('[Auto Pulse] Pipeline error:', e);
     stopBot();
-    triggerNotification('Bot crashed! Check console.');
   }
 }
 
@@ -168,7 +160,6 @@ function stopBot() {
   if (loopTimeout) clearTimeout(loopTimeout);
 }
 
-// Update status dots based on featureStatus
 function updateStatusDots() {
   for (const [feature, dot] of Object.entries(statusDots)) {
     const status = featureStatus[feature] || 'idle';
@@ -211,8 +202,6 @@ function createUI() {
   toggles.forEach(t => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
-    
-    // Status dot
     const dot = document.createElement('span');
     dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#95a5a6;display:inline-block;margin-right:5px;';
     dot.title = 'idle';
@@ -221,7 +210,6 @@ function createUI() {
     const label = document.createElement('span');
     label.textContent = t.label;
     label.style.fontSize = '14px';
-    
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = CONFIG[t.key];
@@ -239,7 +227,6 @@ function createUI() {
     panel.appendChild(row);
   });
 
-  // Listen to status updates
   window.addEventListener('ap-status-update', updateStatusDots);
 
   const resetBtn = document.createElement('button');
@@ -254,14 +241,17 @@ function createUI() {
   document.body.appendChild(panel);
   btn.addEventListener('click', () => {
     panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex';
-    updateStatusDots(); // refresh when opening
+    updateStatusDots();
   });
 }
 
 function init() {
-  if (typeof Notification !== 'undefined' && Notification.permission !== "granted") {
-    Notification.requestPermission();
-  }
+  // Request notification permission safely
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      Notification.requestPermission().catch(() => {});
+    }
+  } catch (e) {}
   createUI();
 }
 
