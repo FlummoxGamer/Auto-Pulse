@@ -11,7 +11,6 @@ export const bankroll = {
   async init() {
     await sendDiscordMessage('owo bal');
     await sleep(3000);
-    // We'll assume the last bot message is the balance (simplified)
     const chat = document.querySelector('ol[class*="scroller"]');
     const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
     const lastMsg = msgs[msgs.length - 1];
