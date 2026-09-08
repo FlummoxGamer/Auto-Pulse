@@ -1,16 +1,14 @@
 export const CONFIG = {
-  // Feature toggles (default off)
-  ENABLE_HUNT: false,
-  ENABLE_BATTLE: false,
-  ENABLE_BLACKJACK: false,
-  ENABLE_COINFLIP: false,
-  ENABLE_PRAY: false,
-  ENABLE_AUTO_GEMS: false,
-  ENABLE_AUTO_ITEMS: false,
-  ENABLE_KEEP_ALIVE: false,  // new toggle
+  ENABLE_HUNT: true,
+  ENABLE_BATTLE: true,
+  ENABLE_BLACKJACK: true,
+  ENABLE_COINFLIP: true,
+  ENABLE_PRAY: true,
+  ENABLE_AUTO_GEMS: true,
+  ENABLE_AUTO_ITEMS: true,
+  ENABLE_KEEP_ALIVE: true,
 
-  // Timers (safer 12s cycle)
-  HUNT_BATTLE_INTERVAL: 12000,  // total cycle time for hunt+battle
+  HUNT_BATTLE_INTERVAL: 12000,
   HUNT_BATTLE_GAP_MIN: 2500,
   HUNT_BATTLE_GAP_MAX: 3000,
   STEP_DELAY_MIN: 3000,
@@ -18,17 +16,14 @@ export const CONFIG = {
   INTERVAL_MIN: 12000,
   INTERVAL_MAX: 15000,
 
-  // Cooldowns
-  PRAY_INTERVAL: 300000, // 5 minutes
-  AUTO_GEMS_CHECK_INTERVAL: 20, // cycles
+  PRAY_INTERVAL: 300000,
+  AUTO_GEMS_CHECK_INTERVAL: 20,
 
-  // Gambling
   BJ_BASE_BET: 10,
   BJ_MAX_BET: 320,
   CF_BASE_BET: 10,
   CF_MAX_BET: 320,
 
-  // Bankroll
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 };
