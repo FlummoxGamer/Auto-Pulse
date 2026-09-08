@@ -4,13 +4,19 @@ import { sendDiscordMessage, sleep, getHumanDelay } from './utils.js';
 let fibIndex = 0;
 let history = [];
 
+// Predict based on last 5 results (if 3+ are heads, bet tails, etc.)
+function predictSide() {
+  if (history.length < 3) return 'h'; // default heads
+  const heads = history.filter(x => x === 'heads').length;
+  const tails = history.length - heads;
+  if (heads > tails) return 't';
+  if (tails > heads) return 'h';
+  return Math.random() < 0.5 ? 'h' : 't';
+}
+
 export async function playCoinflip() {
   const bet = Math.min(CONFIG.CF_BASE_BET * FIBONACCI[fibIndex], CONFIG.CF_MAX_BET);
-  // Choose side: if last 3 are heads, bet tails, else heads
-  let side = 'h';
-  if (history.length >= 3 && history.slice(-3).every(x => x === 'heads')) side = 't';
-  else if (history.length >= 3 && history.slice(-3).every(x => x === 'tails')) side = 'h';
-  
+  const side = predictSide();
   await sendDiscordMessage(`owo cf ${bet} ${side}`);
   await sleep(getHumanDelay(5000, 7000));
 
