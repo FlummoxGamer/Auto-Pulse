@@ -20,3 +20,8 @@ jobs:
         with:
           name: auto-pulse
           path: dist/auto-pulse.user.js
+      - name: Create Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/auto-pulse.user.js
