@@ -8,43 +8,34 @@ export const CONFIG = {
   ENABLE_AUTO_GEMS: true,
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
-  ENABLE_DM_SCAN: true,
+  ENABLE_DM_SCAN: true,          // <-- Added
 
-  // Timers (randomized)
-  HUNT_BATTLE_INTERVAL_MIN: 12000,   // 12s
-  HUNT_BATTLE_INTERVAL_MAX: 16000,   // 16s
+  // Timers
+  HUNT_BATTLE_INTERVAL_MIN: 12000,
+  HUNT_BATTLE_INTERVAL_MAX: 16000,
   HUNT_BATTLE_GAP_MIN: 2000,
   HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL_MIN: 15000,         // 15s (fixed)
-  BJ_CF_INTERVAL_MAX: 18000,         // 18s (fixed)
-  PRE_COMMAND_PAUSE_MIN: 500,        // 0.5s
-  PRE_COMMAND_PAUSE_MAX: 1500,       // 1.5s
+  BJ_CF_INTERVAL_MIN: 15000,
+  BJ_CF_INTERVAL_MAX: 18000,
+  PRE_COMMAND_PAUSE_MIN: 500,
+  PRE_COMMAND_PAUSE_MAX: 1500,
+  QUEUE_DELAY_MIN: 800,
+  QUEUE_DELAY_MAX: 1500,
+  MESSAGE_JITTER_MIN: 2000,
+  MESSAGE_JITTER_MAX: 3000,
+  STARTUP_DELAY_MIN: 5000,
+  STARTUP_DELAY_MAX: 8000,
 
-  // Queue delays (for single-command queue)
-  QUEUE_DELAY_MIN: 800,              // 0.8s
-  QUEUE_DELAY_MAX: 1500,             // 1.5s
+  CASH_INTERVAL: 180000,
+  INVENTORY_INTERVAL: 240000,
+  ITEMS_INTERVAL: 540000,
+  PRAY_INTERVAL: 300000,
 
-  // Message jitter (now 2–3 seconds)
-  MESSAGE_JITTER_MIN: 2000,          // 2s
-  MESSAGE_JITTER_MAX: 3000,          // 3s
-
-  // Startup delays (between startup commands)
-  STARTUP_DELAY_MIN: 5000,           // 5s
-  STARTUP_DELAY_MAX: 8000,           // 8s
-
-  // Recurring timers
-  CASH_INTERVAL: 180000,             // 3 min
-  INVENTORY_INTERVAL: 240000,        // 4 min
-  ITEMS_INTERVAL: 540000,            // 9 min
-  PRAY_INTERVAL: 300000,             // 5 min
-
-  // Gambling
   BJ_BASE_BET: 10,
   BJ_MAX_BET: 320,
   CF_BASE_BET: 10,
   CF_MAX_BET: 320,
 
-  // Bankroll
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 };
