@@ -5,36 +5,31 @@ import { playCoinflip } from './coinflip.js';
 import { bankroll } from './bankroll.js';
 
 let botStarted = false;
-let loopTimeout = null;
+let huntTimer = null;
+let gambleTimer = null;
 let audioCtx = null;
-let cycleCounter = 0;
 let lastPrayTime = 0;
 let startStopBtn = null;
-
 const statusDots = {};
 
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AudioContext();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    // Silent looping audio – shows media notification, inaudible
+    const audio = new Audio('https://upload.wikimedia.org/wikipedia/commons/1/1d/Silence.ogg');
+    audio.loop = true;
+    audio.volume = 0.01; // nearly silent
+    audio.play();
+    audioCtx = audio;
+    console.log('[Keep-Alive] Started with silent audio');
   } catch (e) {
-    console.warn('[Keep-Alive] Failed');
+    console.warn('[Keep-Alive] Failed to start');
   }
 }
 
 function stopKeepAlive() {
   if (audioCtx) {
-    audioCtx.close().catch(() => {});
+    audioCtx.pause();
     audioCtx = null;
   }
 }
@@ -62,77 +57,62 @@ async function autoGems() {
   }
 }
 
-async function runFarmPipeline() {
+// Separate hunt/battle loop – runs every 12s, never delayed by gambling
+async function huntBattleLoop() {
   if (!botStarted) return;
 
-  try {
-    const scanResult = scanChat();
-    if (scanResult === 'captcha') {
-      triggerAlarm();
-      triggerNotification('Captcha detected! Bot stopped.');
-      stopBot();
-      return;
-    }
-    if (scanResult === 'cooldown') {
-      await sleep(30000);
-    }
+  await sendDiscordMessage('owo h', 'hunt');
+  await sleep(getHumanDelay(2000, 2500));
+  await sendDiscordMessage('owo b', 'battle');
 
-    if (bankroll.isOverBudget()) {
-      triggerNotification('Loss limit reached! Bot stopped.');
-      stopBot();
-      return;
-    }
-    if (bankroll.isProfitTargetHit()) {
-      triggerNotification('Profit target reached! Bot stopped.');
-      stopBot();
-      return;
-    }
-
-    const startTime = Date.now();
-
-    if (CONFIG.ENABLE_HUNT) {
-      await sendDiscordMessage('owo h', 'hunt');
-      await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
-    }
-    if (CONFIG.ENABLE_BATTLE) {
-      await sendDiscordMessage('owo b', 'battle');
-      const elapsed = Date.now() - startTime;
-      if (elapsed < CONFIG.HUNT_BATTLE_INTERVAL) await sleep(CONFIG.HUNT_BATTLE_INTERVAL - elapsed);
-    }
-
-    if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
-      if (cycleCounter % 2 === 0) await playBlackjack();
-      else await playCoinflip();
-    } else if (CONFIG.ENABLE_BLACKJACK) {
-      await playBlackjack();
-    } else if (CONFIG.ENABLE_COINFLIP) {
-      await playCoinflip();
-    }
-
-    if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
-      await sendDiscordMessage('owo pray', 'pray');
-      lastPrayTime = Date.now();
-      await sleep(getHumanDelay(CONFIG.STEP_DELAY_MIN, CONFIG.STEP_DELAY_MAX));
-    }
-
-    if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % CONFIG.AUTO_GEMS_CHECK_INTERVAL === 0) {
-      await autoGems();
-    }
-
-    if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
-      await sendDiscordMessage('owo lb all', 'autoItems');
-      await sleep(getHumanDelay(2500, 4000));
-      await sendDiscordMessage('owo wc all', 'autoItems');
-      await sleep(getHumanDelay(2500, 4000));
-    }
-
-    cycleCounter++;
-    const delay = getHumanDelay(CONFIG.INTERVAL_MIN, CONFIG.INTERVAL_MAX);
-    loopTimeout = setTimeout(runFarmPipeline, delay);
-  } catch (e) {
-    console.error('[Auto Pulse] Pipeline error:', e);
-    stopBot();
+  // Auto-gem detection when hunting
+  const chat = document.querySelector('ol[class*="scroller"]');
+  if (chat && chat.innerText.includes("gem expired") && CONFIG.ENABLE_AUTO_GEMS) {
+    await autoGems();
   }
+
+  // Pray every 5 minutes
+  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
+    await sendDiscordMessage('owo pray', 'pray');
+    lastPrayTime = Date.now();
+  }
+
+  huntTimer = setTimeout(huntBattleLoop, CONFIG.HUNT_BATTLE_INTERVAL);
+}
+
+// Separate gambling loop – runs every 30s
+async function gambleLoop() {
+  if (!botStarted) return;
+
+  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
+    if (Math.random() < 0.5) await playBlackjack();
+    else await playCoinflip();
+  } else if (CONFIG.ENABLE_BLACKJACK) {
+    await playBlackjack();
+  } else if (CONFIG.ENABLE_COINFLIP) {
+    await playCoinflip();
+  }
+
+  gambleTimer = setTimeout(gambleLoop, CONFIG.BJ_CF_INTERVAL);
+}
+
+function startBot() {
+  if (botStarted) return;
+  botStarted = true;
+  startKeepAlive();
+  bankroll.init();
+  lastPrayTime = Date.now();
+  huntBattleLoop();
+  gambleLoop();
+  updateStartStopButton();
+}
+
+function stopBot() {
+  botStarted = false;
+  stopKeepAlive();
+  if (huntTimer) clearTimeout(huntTimer);
+  if (gambleTimer) clearTimeout(gambleTimer);
+  updateStartStopButton();
 }
 
 function updateStartStopButton() {
@@ -140,24 +120,6 @@ function updateStartStopButton() {
     startStopBtn.textContent = botStarted ? 'Stop Bot' : 'Start Bot';
     startStopBtn.style.background = botStarted ? '#e74c3c' : '#2ecc71';
   }
-}
-
-function startBot() {
-  if (botStarted) return;
-  botStarted = true;
-  updateStartStopButton();
-  startKeepAlive();
-  bankroll.init();
-  cycleCounter = 0;
-  lastPrayTime = Date.now();
-  runFarmPipeline();
-}
-
-function stopBot() {
-  botStarted = false;
-  updateStartStopButton();
-  stopKeepAlive();
-  if (loopTimeout) clearTimeout(loopTimeout);
 }
 
 function updateStatusDots() {
@@ -171,13 +133,15 @@ function updateStatusDots() {
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
-  btn.style.cssText = 'position:fixed;bottom:20px;right:20px;width:50px;height:50px;background:#5865F2;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;box-shadow:0 4px 8px rgba(0,0,0,0.3);color:white;font-size:24px;font-family:Arial,sans-serif;user-select:none;';
+  // Shifted up: bottom from 20px to 90px so it doesn't overlap textbox icons
+  btn.style.cssText = 'position:fixed;bottom:90px;right:20px;width:50px;height:50px;background:#5865F2;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;box-shadow:0 4px 8px rgba(0,0,0,0.3);color:white;font-size:24px;font-family:Arial,sans-serif;user-select:none;';
   btn.textContent = '⚙️';
   document.body.appendChild(btn);
 
   const panel = document.createElement('div');
   panel.id = 'ap-ui-panel';
-  panel.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#2C2F33;border:1px solid #444;border-radius:10px;padding:12px;z-index:9998;display:none;flex-direction:column;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:Arial,sans-serif;color:white;min-width:170px;';
+  // Panel also shifted up
+  panel.style.cssText = 'position:fixed;bottom:150px;right:20px;background:#2C2F33;border:1px solid #444;border-radius:10px;padding:12px;z-index:9998;display:none;flex-direction:column;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:Arial,sans-serif;color:white;min-width:170px;';
 
   startStopBtn = document.createElement('button');
   startStopBtn.textContent = 'Start Bot';
@@ -246,7 +210,6 @@ function createUI() {
 }
 
 function init() {
-  // Request notification permission safely
   try {
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
       Notification.requestPermission().catch(() => {});
