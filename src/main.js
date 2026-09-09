@@ -8,6 +8,7 @@ let botStarted = false;
 let huntTimer = null;
 let gambleTimer = null;
 let audioCtx = null;
+let cycleCounter = 0;
 let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
@@ -15,16 +16,29 @@ const statusDots = {};
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
-    // Use a tiny silent WAV file as a data URI (allowed by Discord's CSP)
-    const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-    const audio = new Audio(silentWav);
+    // Generate a valid silent WAV using Blob (bypasses CSP issues)
+    const buffer = new ArrayBuffer(44 + 44100);
+    const view = new DataView(buffer);
+    const writeString = function(offset, str) { 
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); 
+    };
+    writeString(0, 'RIFF'); view.setUint32(4, 36 + 44100, true); writeString(8, 'WAVE');
+    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, 44100, true); view.setUint32(28, 44100, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    writeString(36, 'data'); view.setUint32(40, 44100, true);
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    
+    const audio = new Audio(url);
     audio.loop = true;
-    audio.volume = 0.01; // inaudible
+    audio.volume = 0.01; // nearly silent
     audio.play();
     audioCtx = audio;
-    console.log('[Keep-Alive] Started with silent WAV (data URI)');
+    console.log('[Keep-Alive] Started with valid silent WAV (Blob)');
   } catch (e) {
-    console.warn('[Keep-Alive] Failed to start');
+    console.warn('[Keep-Alive] Failed to start:', e);
   }
 }
 
@@ -36,8 +50,7 @@ function stopKeepAlive() {
 }
 
 async function autoGems() {
-  const success = await sendDiscordMessage('owo inv', 'autoGems');
-  if (!success) return;
+  await sendDiscordMessage('owo inv', 'autoGems');
   await sleep(4000);
   const chat = document.querySelector('ol[class*="scroller"]');
   const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
@@ -50,21 +63,24 @@ async function autoGems() {
   for (const [category, ids] of Object.entries(GEM_TYPES)) {
     for (const id of ids) {
       if (ownedGemIds.has(id)) {
-        const used = await sendDiscordMessage(`owo use ${id}`, 'autoGems');
-        if (used) await sleep(getHumanDelay(2000, 3200));
+        await sendDiscordMessage(`owo use ${id}`, 'autoGems');
+        await sleep(getHumanDelay(2000, 3200));
         break;
       }
     }
   }
 }
 
-// Separate hunt/battle loop – runs every 12s, never delayed by gambling
+// Separate hunt/battle loop – runs every 12s
 async function huntBattleLoop() {
   if (!botStarted) return;
 
   await sendDiscordMessage('owo h', 'hunt');
   await sleep(getHumanDelay(2000, 2500));
   await sendDiscordMessage('owo b', 'battle');
+
+  // Cycle counter
+  cycleCounter++;
 
   // Auto-gem detection when hunting
   const chat = document.querySelector('ol[class*="scroller"]');
@@ -78,10 +94,23 @@ async function huntBattleLoop() {
     lastPrayTime = Date.now();
   }
 
+  // Auto Gems check every 20 cycles (4 mins)
+  if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % CONFIG.AUTO_GEMS_CHECK_INTERVAL === 0) {
+    await autoGems();
+  }
+
+  // Auto Items (Lootboxes/Crates) every 45 cycles (9 mins)
+  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % CONFIG.AUTO_ITEMS_INTERVAL === 0) {
+    await sendDiscordMessage('owo lb all', 'autoItems');
+    await sleep(getHumanDelay(2500, 4000));
+    await sendDiscordMessage('owo wc all', 'autoItems');
+    await sleep(getHumanDelay(2500, 4000));
+  }
+
   huntTimer = setTimeout(huntBattleLoop, CONFIG.HUNT_BATTLE_INTERVAL);
 }
 
-// Separate gambling loop – runs every 30s
+// Separate gambling loop – runs every 15s
 async function gambleLoop() {
   if (!botStarted) return;
 
@@ -102,6 +131,7 @@ function startBot() {
   botStarted = true;
   startKeepAlive();
   bankroll.init();
+  cycleCounter = 0;
   lastPrayTime = Date.now();
   huntBattleLoop();
   gambleLoop();
@@ -134,14 +164,12 @@ function updateStatusDots() {
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
-  // Shifted up: bottom from 20px to 90px so it doesn't overlap textbox icons
   btn.style.cssText = 'position:fixed;bottom:90px;right:20px;width:50px;height:50px;background:#5865F2;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;box-shadow:0 4px 8px rgba(0,0,0,0.3);color:white;font-size:24px;font-family:Arial,sans-serif;user-select:none;';
   btn.textContent = '⚙️';
   document.body.appendChild(btn);
 
   const panel = document.createElement('div');
   panel.id = 'ap-ui-panel';
-  // Panel also shifted up
   panel.style.cssText = 'position:fixed;bottom:150px;right:20px;background:#2C2F33;border:1px solid #444;border-radius:10px;padding:12px;z-index:9998;display:none;flex-direction:column;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:Arial,sans-serif;color:white;min-width:170px;';
 
   startStopBtn = document.createElement('button');
