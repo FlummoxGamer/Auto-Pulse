@@ -81,10 +81,11 @@ async function autoGems() {
 // --- Startup commands (will be queued one by one) ---
 async function runStartupCommands() {
   isStartupRunning = true;
-  const commands = ['owo cash', 'owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
+  // 'owo cash' is already sent by bankroll.init() – no need to send it again here
+  const commands = ['owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
   for (const cmd of commands) {
     if (!botStarted || isHardStopped) return;
-    await sendDiscordMessage(cmd, 'startup'); // this uses queue, so no overlap
+    await sendDiscordMessage(cmd, 'startup');
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
