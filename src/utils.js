@@ -8,9 +8,10 @@ function captureTokenFromHeaders(headers) {
     let token = headers.Authorization;
     if (token.startsWith('Bearer ')) token = token.slice(7);
     if (token && token.length > 20) {
-      capturedToken = token;
-      GM_setValue('discord_token', token);
-      console.log('[Auto Pulse] Captured live token (length: ' + token.length + ')');
+    if (capturedToken !== token) {
+        capturedToken = token;
+        GM_setValue('discord_token', token);
+        console.log('[Auto Pulse] Captured live token (length: ' + token.length + ')');
     }
   }
 }
