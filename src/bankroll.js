@@ -9,7 +9,7 @@ export const bankroll = {
   profitTarget: null,
 
   async init() {
-    await sendDiscordMessage('owo bal');
+    await sendDiscordMessage('owo cash');  // corrected command
     await sleep(3000);
     const chat = document.querySelector('ol[class*="scroller"]');
     const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
@@ -18,7 +18,7 @@ export const bankroll = {
     if (bal !== null) {
       this.sessionStart = bal;
       this.sessionBudget = Math.round(bal * CONFIG.BANKROLL_PERCENT);
-      this.profitTarget = bal * CONFIG.PROFIT_TARGET_PERCENT;
+      this.profitTarget = Math.round(bal * CONFIG.PROFIT_TARGET_PERCENT);
       console.log(`[Bankroll] Start: ${bal}, Budget: ${this.sessionBudget}, Target: ${this.profitTarget}`);
     }
   },
