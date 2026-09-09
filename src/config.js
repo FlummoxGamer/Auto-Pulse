@@ -8,6 +8,7 @@ export const CONFIG = {
   ENABLE_AUTO_GEMS: true,
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
+  ENABLE_DM_SCAN: true,
 
   // Timers (randomized)
   HUNT_BATTLE_INTERVAL_MIN: 12000,   // 12s
