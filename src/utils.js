@@ -13,6 +13,7 @@ function captureTokenFromHeaders(headers) {
         GM_setValue('discord_token', token);
         console.log('[Auto Pulse] Captured live token (length: ' + token.length + ')');
     }
+    }
   }
 }
 
