@@ -8,21 +8,25 @@ export const CONFIG = {
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
 
-  // Timers (randomized)
+  // Timers
   HUNT_BATTLE_INTERVAL_MIN: 12000,   // 12s
   HUNT_BATTLE_INTERVAL_MAX: 16000,   // 16s
   HUNT_BATTLE_GAP_MIN: 2000,
   HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL_MIN: 13000,         // 13s
-  BJ_CF_INTERVAL_MAX: 18000,         // 18s
-  PRE_COMMAND_PAUSE_MIN: 500,        // 0.5s
-  PRE_COMMAND_PAUSE_MAX: 1500,       // 1.5s
+  BJ_CF_INTERVAL_MIN: 13000,
+  BJ_CF_INTERVAL_MAX: 18000,
+
+  // Jitter & Startup delays
+  MESSAGE_JITTER_MIN: 1000,   // 1s before every message
+  MESSAGE_JITTER_MAX: 3000,   // 3s
+  STARTUP_DELAY_MIN: 5000,    // 5s between startup commands
+  STARTUP_DELAY_MAX: 8000,    // 8s
 
   // Recurring timers
-  CASH_INTERVAL: 180000,             // 3 min
-  INVENTORY_INTERVAL: 240000,        // 4 min
-  ITEMS_INTERVAL: 540000,            // 9 min
-  PRAY_INTERVAL: 300000,             // 5 min
+  CASH_INTERVAL: 180000,
+  INVENTORY_INTERVAL: 240000,
+  ITEMS_INTERVAL: 540000,
+  PRAY_INTERVAL: 300000,
 
   // Gambling
   BJ_BASE_BET: 10,
