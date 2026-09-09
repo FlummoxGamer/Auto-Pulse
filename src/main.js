@@ -14,12 +14,10 @@ let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
-// ** FIXED: Silent continuous WAV (10 sec) at volume 0.01 **
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
-    const sampleRate = 44100;
-    const duration = 10; // 10 seconds
+    const sampleRate = 44100, duration = 10;
     const buffer = new ArrayBuffer(44 + sampleRate * duration * 2);
     const view = new DataView(buffer);
     const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
@@ -27,43 +25,28 @@ function startKeepAlive() {
     writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
     view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
     writeString(36, 'data'); view.setUint32(40, sampleRate * duration * 2, true);
-    // Fill with absolute silence (0s)
-    
     const blob = new Blob([buffer], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.loop = true;
-    audio.volume = 0.01; // inaudible
-    audio.play();
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.loop = true; audio.volume = 0.01; audio.play();
     audioCtx = audio;
-    console.log('[Keep-Alive] Started with 10-sec silent WAV loop');
   } catch (e) {}
 }
 
-function stopKeepAlive() {
-  if (audioCtx) {
-    audioCtx.pause();
-    audioCtx = null;
-  }
-}
+function stopKeepAlive() { if (audioCtx) { audioCtx.pause(); audioCtx = null; } }
 
 let captchaScanTimer = null;
 function startCaptchaScanner() {
   captchaScanTimer = setInterval(() => {
     if (!botStarted) return;
-    const scan = scanChat();
-    if (scan === 'captcha') {
-      console.error('[Auto Pulse] CAPTCHA DETECTED! Hard stopping.');
-      playNotificationSound(); // Soft notification
+    if (scanChat() === 'captcha') {
+      playNotificationSound();
       triggerNotification('Captcha detected! Bot stopped.');
       stopBot();
     }
   }, 1000);
 }
 
-function stopCaptchaScanner() {
-  if (captchaScanTimer) clearInterval(captchaScanTimer);
-}
+function stopCaptchaScanner() { if (captchaScanTimer) clearInterval(captchaScanTimer); }
 
 async function autoGems() {
   await sendDiscordMessage('owo inv', 'autoGems');
@@ -78,16 +61,11 @@ async function autoGems() {
   while ((match = gemRegex.exec(invText)) !== null) ownedGemIds.add(match[1]);
   for (const [category, ids] of Object.entries(GEM_TYPES)) {
     for (const id of ids) {
-      if (ownedGemIds.has(id)) {
-        await sendDiscordMessage(`owo use ${id}`, 'autoGems');
-        await sleep(getHumanDelay(2000, 3200));
-        break;
-      }
+      if (ownedGemIds.has(id)) { await sendDiscordMessage(`owo use ${id}`, 'autoGems'); await sleep(getHumanDelay(2000, 3200)); break; }
     }
   }
 }
 
-// ** FIXED: Startup sequence with 5-8s delays **
 async function runStartupCommands() {
   isStartupRunning = true;
   const commands = ['owo cash', 'owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
@@ -97,67 +75,36 @@ async function runStartupCommands() {
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
-  console.log('[Auto Pulse] Startup complete. Main loops beginning.');
 }
 
-// ** FIXED: Waits for startup to complete before hunting **
 async function huntBattleLoop() {
-  if (!botStarted || isStartupRunning) {
-    if (botStarted) huntTimer = setTimeout(huntBattleLoop, 3000); // check again in 3s
-    return;
-  }
-
+  if (!botStarted || isStartupRunning) { if (botStarted) huntTimer = setTimeout(huntBattleLoop, 3000); return; }
   await sendDiscordMessage('owo h', 'hunt');
   await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
   await sendDiscordMessage('owo b', 'battle');
-
   cycleCounter++;
-
-  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
-    await sendDiscordMessage('owo pray', 'pray');
-    lastPrayTime = Date.now();
-  }
-
+  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) { await sendDiscordMessage('owo pray', 'pray'); lastPrayTime = Date.now(); }
   if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % 20 === 0) await autoGems();
-  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
-    await sendDiscordMessage('owo lb all', 'autoItems');
-    await sleep(getHumanDelay(2500, 4000));
-    await sendDiscordMessage('owo wc all', 'autoItems');
-  }
-
-  const next = getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX);
-  huntTimer = setTimeout(huntBattleLoop, next);
+  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) { await sendDiscordMessage('owo lb all', 'autoItems'); await sleep(getHumanDelay(2500, 4000)); await sendDiscordMessage('owo wc all', 'autoItems'); }
+  huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
 
 async function gambleLoop() {
-  if (!botStarted || isStartupRunning) {
-    if (botStarted) gambleTimer = setTimeout(gambleLoop, 3000);
-    return;
-  }
-
-  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
-    if (Math.random() < 0.5) await playBlackjack();
-    else await playCoinflip();
-  } else if (CONFIG.ENABLE_BLACKJACK) {
-    await playBlackjack();
-  } else if (CONFIG.ENABLE_COINFLIP) {
-    await playCoinflip();
-  }
-
-  const next = getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX);
-  gambleTimer = setTimeout(gambleLoop, next);
+  if (!botStarted || isStartupRunning) { if (botStarted) gambleTimer = setTimeout(gambleLoop, 3000); return; }
+  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) { if (Math.random() < 0.5) await playBlackjack(); else await playCoinflip(); }
+  else if (CONFIG.ENABLE_BLACKJACK) await playBlackjack();
+  else if (CONFIG.ENABLE_COINFLIP) await playCoinflip();
+  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
 function startBot() {
   if (botStarted) return;
   botStarted = true;
-  updateStartStopButton(); // Update IMMEDIATELY
-  
+  updateStartStopButton();
   startKeepAlive();
   startCaptchaScanner();
   bankroll.init();
   lastPrayTime = Date.now();
-  
   runStartupCommands();
   huntBattleLoop();
   gambleLoop();
@@ -166,8 +113,7 @@ function startBot() {
 function stopBot() {
   botStarted = false;
   isStartupRunning = false;
-  updateStartStopButton(); // Update IMMEDIATELY
-
+  updateStartStopButton();
   stopKeepAlive();
   stopCaptchaScanner();
   if (huntTimer) clearTimeout(huntTimer);
@@ -203,21 +149,14 @@ function createUI() {
   startStopBtn = document.createElement('button');
   startStopBtn.textContent = 'Start Bot';
   startStopBtn.style.cssText = 'background:#2ecc71;color:white;border:none;border-radius:5px;padding:8px;cursor:pointer;font-size:14px;width:100%;';
-  startStopBtn.addEventListener('click', () => {
-    if (!botStarted) startBot();
-    else stopBot();
-  });
+  startStopBtn.addEventListener('click', () => { if (!botStarted) startBot(); else stopBot(); });
   panel.appendChild(startStopBtn);
 
   const toggles = [
-    { label: 'Hunt', key: 'ENABLE_HUNT' },
-    { label: 'Battle', key: 'ENABLE_BATTLE' },
-    { label: 'Blackjack', key: 'ENABLE_BLACKJACK' },
-    { label: 'Coinflip', key: 'ENABLE_COINFLIP' },
-    { label: 'Pray', key: 'ENABLE_PRAY' },
-    { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' },
-    { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' },
-    { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
+    { label: 'Hunt', key: 'ENABLE_HUNT' }, { label: 'Battle', key: 'ENABLE_BATTLE' },
+    { label: 'Blackjack', key: 'ENABLE_BLACKJACK' }, { label: 'Coinflip', key: 'ENABLE_COINFLIP' },
+    { label: 'Pray', key: 'ENABLE_PRAY' }, { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' },
+    { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' }, { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
   ];
 
   toggles.forEach(t => {
@@ -227,7 +166,6 @@ function createUI() {
     dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#95a5a6;display:inline-block;margin-right:5px;';
     dot.title = 'idle';
     statusDots[t.key] = dot;
-
     const label = document.createElement('span');
     label.textContent = t.label;
     label.style.fontSize = '14px';
@@ -236,16 +174,9 @@ function createUI() {
     checkbox.checked = CONFIG[t.key];
     checkbox.addEventListener('change', () => {
       CONFIG[t.key] = checkbox.checked;
-      if (t.key === 'ENABLE_KEEP_ALIVE') {
-        if (CONFIG[t.key]) startKeepAlive();
-        else stopKeepAlive();
-      }
+      if (t.key === 'ENABLE_KEEP_ALIVE') { if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); }
     });
-
-    row.appendChild(dot);
-    row.appendChild(label);
-    row.appendChild(checkbox);
-    panel.appendChild(row);
+    row.appendChild(dot); row.appendChild(label); row.appendChild(checkbox); panel.appendChild(row);
   });
 
   window.addEventListener('ap-status-update', updateStatusDots);
@@ -253,25 +184,14 @@ function createUI() {
   const resetBtn = document.createElement('button');
   resetBtn.textContent = 'Reset Bankroll';
   resetBtn.style.cssText = 'background:#f39c12;color:white;border:none;border-radius:5px;padding:5px;cursor:pointer;font-size:12px;width:100%;';
-  resetBtn.addEventListener('click', () => {
-    bankroll.reset();
-    console.log('[UI] Bankroll reset');
-  });
+  resetBtn.addEventListener('click', () => { bankroll.reset(); });
   panel.appendChild(resetBtn);
-
   document.body.appendChild(panel);
-  btn.addEventListener('click', () => {
-    panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex';
-    updateStatusDots();
-  });
+  btn.addEventListener('click', () => { panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; updateStatusDots(); });
 }
 
 function init() {
-  try {
-    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-      Notification.requestPermission().catch(() => {});
-    }
-  } catch (e) {}
+  try { if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') Notification.requestPermission().catch(() => {}); } catch (e) {}
   createUI();
 }
 
