@@ -1,3 +1,4 @@
+// src/utils.js
 export function getHumanDelay(min, max) {
   const u1 = Math.random();
   const u2 = Math.random();
@@ -51,7 +52,10 @@ export async function sendDiscordMessage(text, feature = 'general') {
           os_version: "Android",
           release_channel: "stable",
           client_build_number: "0"
-        }))
+        })),
+        // ✅ Added the two crucial headers to fix the 401 error
+        'X-Discord-Locale': 'en-US',
+        'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
       };
       try {
         const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
@@ -72,7 +76,7 @@ export async function sendDiscordMessage(text, feature = 'general') {
     }
   }
 
-  // 2. Fallback: DOM injection (still needs to work without keyboard)
+  // 2. Fallback: DOM injection
   const chatInput = document.querySelector('div[role="textbox"]');
   if (chatInput) {
     try {
@@ -80,7 +84,6 @@ export async function sendDiscordMessage(text, feature = 'general') {
       chatInput.innerText = text;
       chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
       await sleep(150);
-      // Try clicking actual send button (if exists)
       const sendBtn = document.querySelector('button[aria-label="Send"]') ||
                       document.querySelector('button[aria-label="Send Message"]') ||
                       document.querySelector('button[class*="send"]') ||
@@ -91,7 +94,6 @@ export async function sendDiscordMessage(text, feature = 'general') {
         setFeatureStatus(feature, 'success');
         return true;
       }
-      // Fallback: Press Enter on the input
       const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true });
       chatInput.dispatchEvent(enterEvent);
       console.log(`%c[Auto Pulse] DOM Sent (Enter): ${text}`, 'color:#00ff00;font-weight:bold;');
