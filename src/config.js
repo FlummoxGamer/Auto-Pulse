@@ -8,9 +8,11 @@ export const CONFIG = {
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
 
-  HUNT_BATTLE_INTERVAL: 12000,
+  // Timers
+  HUNT_BATTLE_INTERVAL: 12000,   // 12s for hunt + battle loop
   HUNT_BATTLE_GAP_MIN: 2500,
   HUNT_BATTLE_GAP_MAX: 3000,
+  BJ_CF_INTERVAL: 30000,         // 30s for gambling loop (new)
   STEP_DELAY_MIN: 3000,
   STEP_DELAY_MAX: 5000,
   INTERVAL_MIN: 12000,
