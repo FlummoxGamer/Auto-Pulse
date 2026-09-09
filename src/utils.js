@@ -15,7 +15,6 @@ function captureTokenFromHeaders(headers) {
   }
 }
 
-// Intercept all fetch calls to Discord
 const originalFetch = window.fetch;
 window.fetch = function(...args) {
   const url = args[0];
@@ -26,7 +25,6 @@ window.fetch = function(...args) {
   return originalFetch.apply(this, args);
 };
 
-// Also intercept XMLHttpRequest (Discord sometimes uses it)
 const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
   if (name.toLowerCase() === 'authorization') {
@@ -35,18 +33,28 @@ XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
   return originalXHR.call(this, name, value);
 };
 
-// Get token from GM storage, or use captured token
 async function getToken() {
   if (capturedToken) return capturedToken;
   let token = await GM_getValue('discord_token', null);
   if (token) return token;
-  // If no token yet, wait for a network request to capture it (will happen quickly)
   console.warn('[Auto Pulse] Waiting for Discord to make a request to capture token...');
   return null;
 }
 
-export function getHumanDelay(min, max) { /* same as before */ }
-export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+export function getHumanDelay(min, max) {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+  const mean = (min + max) / 2;
+  const stdDev = (max - min) / 6;
+  const delay = Math.round(mean + randStdNormal * stdDev);
+  return Math.min(Math.max(delay, min), max);
+}
+
+export function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 export const featureStatus = {};
 export function setFeatureStatus(feature, status) {
   featureStatus[feature] = status;
@@ -70,7 +78,12 @@ export async function sendDiscordMessage(text, feature = 'general') {
     'Accept': '*/*',
     'Origin': 'https://discord.com',
     'Referer': window.location.href,
-    'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" })),
+    'X-Super-Properties': btoa(JSON.stringify({
+      os: "Android", browser: "Chrome", device: "", system_locale: "en-US",
+      browser_user_agent: navigator.userAgent,
+      browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0",
+      os_version: "Android", release_channel: "stable", client_build_number: "0"
+    })),
     'X-Discord-Locale': 'en-US',
     'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
   };
@@ -90,7 +103,6 @@ export async function sendDiscordMessage(text, feature = 'general') {
     console.warn('[Auto Pulse] API network error, trying DOM method');
   }
 
-  // Fallback: DOM injection (still no keyboard)
   const chatInput = document.querySelector('div[role="textbox"]');
   if (chatInput) {
     try {
@@ -107,4 +119,54 @@ export async function sendDiscordMessage(text, feature = 'general') {
   setFeatureStatus(feature, 'fail');
   return false;
 }
-// rest of functions (scanChat, parseBalance, etc.) remain unchanged
+
+export function scanChat() {
+  const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
+  if (!chatContainer) return null;
+  const messages = chatContainer.querySelectorAll('li[class*="message"]');
+  if (!messages.length) return null;
+  const recent = Array.from(messages).slice(-6);
+  for (let msg of recent) {
+    const text = msg.innerText.toLowerCase();
+    const html = msg.innerHTML.toLowerCase();
+    if (["captcha", "are you a human", "verify", "link.owo.bot", "banned", "type the code", "security check"].some(t => text.includes(t)) || html.includes("captcha")) return "captcha";
+    if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
+  }
+  return null;
+}
+
+export function parseBalance(text) {
+  const match = text.replace(/,/g, '').match(/(\d+)/);
+  return match ? parseInt(match[1]) : null;
+}
+
+export function triggerAlarm() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(1, ctx.currentTime);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.5);
+  } catch (e) {}
+}
+
+export function triggerNotification(msg) {
+  try {
+    if (typeof GM_notification !== 'undefined') {
+      GM_notification({ title: "Auto Pulse", text: msg });
+      return;
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
+    } else {
+      alert(msg);
+    }
+  } catch (e) {
+    console.warn('[Auto Pulse] Notification failed:', e);
+  }
+    }
