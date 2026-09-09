@@ -1,5 +1,5 @@
 import { CONFIG, GEM_TYPES } from './config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus } from './utils.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './utils.js';
 import { playBlackjack } from './blackjack.js';
 import { playCoinflip } from './coinflip.js';
 import { bankroll } from './bankroll.js';
@@ -14,6 +14,31 @@ let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
+// --- MutationObserver for real-time chat scan ---
+let observer = null;
+
+function startObserver() {
+  if (observer) observer.disconnect();
+  const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
+  if (!chatContainer) return;
+  observer = new MutationObserver(() => {
+    if (!botStarted) return;
+    const scan = scanChat();
+    if (scan === 'captcha') {
+      console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
+      playNotificationSound();
+      triggerNotification('Captcha detected! Bot stopped.');
+      stopBot();
+    }
+  });
+  observer.observe(chatContainer, { childList: true, subtree: true, characterData: true });
+}
+
+function stopObserver() {
+  if (observer) { observer.disconnect(); observer = null; }
+}
+
+// --- Keep-alive (same as before) ---
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
@@ -34,20 +59,7 @@ function startKeepAlive() {
 
 function stopKeepAlive() { if (audioCtx) { audioCtx.pause(); audioCtx = null; } }
 
-let captchaScanTimer = null;
-function startCaptchaScanner() {
-  captchaScanTimer = setInterval(() => {
-    if (!botStarted) return;
-    if (scanChat() === 'captcha') {
-      playNotificationSound();
-      triggerNotification('Captcha detected! Bot stopped.');
-      stopBot();
-    }
-  }, 1000);
-}
-
-function stopCaptchaScanner() { if (captchaScanTimer) clearInterval(captchaScanTimer); }
-
+// --- Auto Gems (same, but uses queue via sendDiscordMessage) ---
 async function autoGems() {
   await sendDiscordMessage('owo inv', 'autoGems');
   await sleep(4000);
@@ -66,43 +78,64 @@ async function autoGems() {
   }
 }
 
+// --- Startup commands (will be queued one by one) ---
 async function runStartupCommands() {
   isStartupRunning = true;
   const commands = ['owo cash', 'owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
-  for (let cmd of commands) {
-    if (!isStartupRunning || !botStarted) return;
-    await sendDiscordMessage(cmd, 'startup');
+  for (const cmd of commands) {
+    if (!botStarted || isHardStopped) return;
+    await sendDiscordMessage(cmd, 'startup'); // this uses queue, so no overlap
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
 }
 
+// --- Main loops (now they just enqueue commands; no direct sends) ---
 async function huntBattleLoop() {
-  if (!botStarted || isStartupRunning) { if (botStarted) huntTimer = setTimeout(huntBattleLoop, 3000); return; }
+  if (!botStarted || isStartupRunning || isHardStopped) {
+    if (botStarted && !isHardStopped) huntTimer = setTimeout(huntBattleLoop, 3000);
+    return;
+  }
   await sendDiscordMessage('owo h', 'hunt');
   await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
   await sendDiscordMessage('owo b', 'battle');
   cycleCounter++;
-  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) { await sendDiscordMessage('owo pray', 'pray'); lastPrayTime = Date.now(); }
+  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
+    await sendDiscordMessage('owo pray', 'pray');
+    lastPrayTime = Date.now();
+  }
   if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % 20 === 0) await autoGems();
-  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) { await sendDiscordMessage('owo lb all', 'autoItems'); await sleep(getHumanDelay(2500, 4000)); await sendDiscordMessage('owo wc all', 'autoItems'); }
+  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
+    await sendDiscordMessage('owo lb all', 'autoItems');
+    await sleep(getHumanDelay(2500, 4000));
+    await sendDiscordMessage('owo wc all', 'autoItems');
+  }
   huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
 
 async function gambleLoop() {
-  if (!botStarted || isStartupRunning) { if (botStarted) gambleTimer = setTimeout(gambleLoop, 3000); return; }
-  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) { if (Math.random() < 0.5) await playBlackjack(); else await playCoinflip(); }
-  else if (CONFIG.ENABLE_BLACKJACK) await playBlackjack();
-  else if (CONFIG.ENABLE_COINFLIP) await playCoinflip();
+  if (!botStarted || isStartupRunning || isHardStopped) {
+    if (botStarted && !isHardStopped) gambleTimer = setTimeout(gambleLoop, 3000);
+    return;
+  }
+  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
+    if (Math.random() < 0.5) await playBlackjack();
+    else await playCoinflip();
+  } else if (CONFIG.ENABLE_BLACKJACK) {
+    await playBlackjack();
+  } else if (CONFIG.ENABLE_COINFLIP) {
+    await playCoinflip();
+  }
   gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
 function startBot() {
   if (botStarted) return;
   botStarted = true;
+  setHardStop(false); // Reset
   updateStartStopButton();
   startKeepAlive();
-  startCaptchaScanner();
+  startObserver();
   bankroll.init();
   lastPrayTime = Date.now();
   runStartupCommands();
@@ -112,10 +145,11 @@ function startBot() {
 
 function stopBot() {
   botStarted = false;
+  setHardStop(true); // Kill all sends instantly
   isStartupRunning = false;
   updateStartStopButton();
   stopKeepAlive();
-  stopCaptchaScanner();
+  stopObserver();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
 }
