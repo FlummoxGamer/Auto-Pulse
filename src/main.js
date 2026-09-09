@@ -15,13 +15,14 @@ const statusDots = {};
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
-    // Silent looping audio – shows media notification, inaudible
-    const audio = new Audio('https://upload.wikimedia.org/wikipedia/commons/1/1d/Silence.ogg');
+    // Use a tiny silent WAV file as a data URI (allowed by Discord's CSP)
+    const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+    const audio = new Audio(silentWav);
     audio.loop = true;
-    audio.volume = 0.01; // nearly silent
+    audio.volume = 0.01; // inaudible
     audio.play();
     audioCtx = audio;
-    console.log('[Keep-Alive] Started with silent audio');
+    console.log('[Keep-Alive] Started with silent WAV (data URI)');
   } catch (e) {
     console.warn('[Keep-Alive] Failed to start');
   }
