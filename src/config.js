@@ -1,4 +1,5 @@
 export const CONFIG = {
+  // Feature toggles
   ENABLE_HUNT: true,
   ENABLE_BATTLE: true,
   ENABLE_BLACKJACK: true,
@@ -8,25 +9,29 @@ export const CONFIG = {
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
 
-  // Timers
+  // Timers (randomized)
   HUNT_BATTLE_INTERVAL_MIN: 12000,   // 12s
   HUNT_BATTLE_INTERVAL_MAX: 16000,   // 16s
   HUNT_BATTLE_GAP_MIN: 2000,
   HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL_MIN: 13000,
-  BJ_CF_INTERVAL_MAX: 18000,
+  BJ_CF_INTERVAL_MIN: 13000,         // 13s
+  BJ_CF_INTERVAL_MAX: 18000,         // 18s
+  PRE_COMMAND_PAUSE_MIN: 500,        // 0.5s
+  PRE_COMMAND_PAUSE_MAX: 1500,       // 1.5s
 
-  // Jitter & Startup delays
-  MESSAGE_JITTER_MIN: 1000,   // 1s before every message
-  MESSAGE_JITTER_MAX: 3000,   // 3s
-  STARTUP_DELAY_MIN: 5000,    // 5s between startup commands
-  STARTUP_DELAY_MAX: 8000,    // 8s
+  // Queue delays (for single-command queue)
+  QUEUE_DELAY_MIN: 800,              // 0.8s between queued commands
+  QUEUE_DELAY_MAX: 1500,             // 1.5s
+
+  // Startup delays (between startup commands)
+  STARTUP_DELAY_MIN: 5000,           // 5s
+  STARTUP_DELAY_MAX: 8000,           // 8s
 
   // Recurring timers
-  CASH_INTERVAL: 180000,
-  INVENTORY_INTERVAL: 240000,
-  ITEMS_INTERVAL: 540000,
-  PRAY_INTERVAL: 300000,
+  CASH_INTERVAL: 180000,             // 3 min
+  INVENTORY_INTERVAL: 240000,        // 4 min
+  ITEMS_INTERVAL: 540000,            // 9 min
+  PRAY_INTERVAL: 300000,             // 5 min
 
   // Gambling
   BJ_BASE_BET: 10,
@@ -34,6 +39,7 @@ export const CONFIG = {
   CF_BASE_BET: 10,
   CF_MAX_BET: 320,
 
+  // Bankroll
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 };
