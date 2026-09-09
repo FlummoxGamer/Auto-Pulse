@@ -1,6 +1,6 @@
 import { CONFIG } from './config.js';
 
-// --- Token auto-capture from network requests ---
+// --- Token capture (unchanged, but now logs only when new token) ---
 let capturedToken = null;
 
 function captureTokenFromHeaders(headers) {
@@ -8,11 +8,11 @@ function captureTokenFromHeaders(headers) {
     let token = headers.Authorization;
     if (token.startsWith('Bearer ')) token = token.slice(7);
     if (token && token.length > 20) {
-    if (capturedToken !== token) {
+      if (capturedToken !== token) {
         capturedToken = token;
         GM_setValue('discord_token', token);
         console.log('[Auto Pulse] Captured live token (length: ' + token.length + ')');
-    }
+      }
     }
   }
 }
@@ -127,11 +127,15 @@ export function scanChat() {
   if (!chatContainer) return null;
   const messages = chatContainer.querySelectorAll('li[class*="message"]');
   if (!messages.length) return null;
-  const recent = Array.from(messages).slice(-6);
+  const recent = Array.from(messages).slice(-10); // check last 10 messages
   for (let msg of recent) {
     const text = msg.innerText.toLowerCase();
     const html = msg.innerHTML.toLowerCase();
-    if (["captcha", "are you a human", "verify", "link.owo.bot", "banned", "type the code", "security check"].some(t => text.includes(t)) || html.includes("captcha")) return "captcha";
+    
+    // Big list of captcha/verification keywords (covers OwO and Discord)
+    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(1/5)", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast"].some(k => text.includes(k) || html.includes(k))) {
+      return "captcha";
+    }
     if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
   }
   return null;
@@ -171,4 +175,4 @@ export function triggerNotification(msg) {
   } catch (e) {
     console.warn('[Auto Pulse] Notification failed:', e);
   }
-    }
+}
