@@ -127,12 +127,27 @@ export function scanChat() {
       const raw = msg.innerText.toLowerCase();
       const text = sanitizeText(raw);
       const html = msg.innerHTML.toLowerCase();
-      if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast", "banned for 999999", "owobot rules", "cowoncy has been reset", "dm", "direct message"].some(k => text.includes(k) || html.includes(k))) return "captcha";
+      
+      // Server keywords (NO "dm" here – that's only for DM scanner)
+      const serverKeywords = [
+        "captcha", "are you a real human", "bot","10 minutes","please complete", "link below", 
+        "type the code", "verify","human","real","ban","link","verification", "human(", "automated", "security check", 
+        "you're doing that too fast", "stop! you're doing that too fast", 
+        "banned for 999999", "owobot rules", "cowoncy has been reset"
+      ];
+      
+      for (let k of serverKeywords) {
+        if (text.includes(k) || html.includes(k)) {
+          console.warn(`[Auto Pulse] FALSE FLAG? Server keyword triggered: "${k}" in message: "${raw}"`);
+          return "captcha";
+        }
+      }
+      
       if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
     }
   }
 
-  // Scan DMs (if enabled)
+  // Scan DMs (unchanged – only for DM channels)
   if (CONFIG.ENABLE_DM_SCAN) {
     const isDM = window.location.pathname.includes('/@me/');
     if (isDM) {
@@ -141,14 +156,16 @@ export function scanChat() {
         const recent = Array.from(messages).slice(-5);
         for (let msg of recent) {
           const text = sanitizeText(msg.innerText.toLowerCase());
-          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) return "captcha";
+          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) {
+            console.warn(`[Auto Pulse] DM false flag? Triggered by: "${text}"`);
+            return "captcha";
+          }
         }
       }
     }
   }
   return null;
 }
-
 export function parseBalance(text) {
   const match = text.replace(/,/g, '').match(/(\d+)/);
   return match ? parseInt(match[1]) : null;
