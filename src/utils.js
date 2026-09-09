@@ -1,6 +1,5 @@
 import { CONFIG } from './config.js';
 
-// --- Token capture (unchanged, but now logs only when new token) ---
 let capturedToken = null;
 
 function captureTokenFromHeaders(headers) {
@@ -39,7 +38,6 @@ async function getToken() {
   if (capturedToken) return capturedToken;
   let token = await GM_getValue('discord_token', null);
   if (token) return token;
-  console.warn('[Auto Pulse] Waiting for Discord to make a request to capture token...');
   return null;
 }
 
@@ -64,11 +62,11 @@ export function setFeatureStatus(feature, status) {
 }
 
 export async function sendDiscordMessage(text, feature = 'general') {
+  // ** ANTI-SPAM JITTER: Wait 1-3 seconds before sending **
+  await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
+
   const token = await getToken();
-  if (!token) {
-    console.error('[Auto Pulse] Token not captured yet. Wait a few seconds.');
-    return false;
-  }
+  if (!token) return false;
 
   const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
   if (!match) return false;
@@ -80,12 +78,7 @@ export async function sendDiscordMessage(text, feature = 'general') {
     'Accept': '*/*',
     'Origin': 'https://discord.com',
     'Referer': window.location.href,
-    'X-Super-Properties': btoa(JSON.stringify({
-      os: "Android", browser: "Chrome", device: "", system_locale: "en-US",
-      browser_user_agent: navigator.userAgent,
-      browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0",
-      os_version: "Android", release_channel: "stable", client_build_number: "0"
-    })),
+    'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" })),
     'X-Discord-Locale': 'en-US',
     'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
   };
@@ -98,26 +91,9 @@ export async function sendDiscordMessage(text, feature = 'general') {
       console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
       setFeatureStatus(feature, 'success');
       return true;
-    } else {
-      console.warn(`[Auto Pulse] API error ${response.status}, trying DOM method`);
     }
-  } catch (e) {
-    console.warn('[Auto Pulse] API network error, trying DOM method');
-  }
-
-  const chatInput = document.querySelector('div[role="textbox"]');
-  if (chatInput) {
-    try {
-      chatInput.textContent = '';
-      chatInput.innerText = text;
-      chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
-      await sleep(150);
-      const sendBtn = document.querySelector('button[aria-label="Send"]') || document.querySelector('button[class*="send"]');
-      if (sendBtn) sendBtn.click();
-      setFeatureStatus(feature, 'success');
-      return true;
-    } catch (e) {}
-  }
+  } catch (e) {}
+  
   setFeatureStatus(feature, 'fail');
   return false;
 }
@@ -127,12 +103,10 @@ export function scanChat() {
   if (!chatContainer) return null;
   const messages = chatContainer.querySelectorAll('li[class*="message"]');
   if (!messages.length) return null;
-  const recent = Array.from(messages).slice(-10); // check last 10 messages
+  const recent = Array.from(messages).slice(-10);
   for (let msg of recent) {
     const text = msg.innerText.toLowerCase();
     const html = msg.innerHTML.toLowerCase();
-    
-    // Big list of captcha/verification keywords (covers OwO and Discord)
     if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(1/5)", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast"].some(k => text.includes(k) || html.includes(k))) {
       return "captcha";
     }
@@ -146,18 +120,19 @@ export function parseBalance(text) {
   return match ? parseInt(match[1]) : null;
 }
 
-export function triggerAlarm() {
+// ** FIXED: Soft, short notification sound (0.2s, volume 0.2) **
+export function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sawtooth';
+    osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
-    gain.gain.setValueAtTime(1, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 1.5);
+    osc.stop(ctx.currentTime + 0.2);
   } catch (e) {}
 }
 
@@ -172,7 +147,5 @@ export function triggerNotification(msg) {
     } else {
       alert(msg);
     }
-  } catch (e) {
-    console.warn('[Auto Pulse] Notification failed:', e);
-  }
-}
+  } catch (e) {}
+                 }
