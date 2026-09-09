@@ -13,13 +13,8 @@ async function processQueue() {
   isProcessingQueue = true;
   while (commandQueue.length > 0 && !isHardStopped) {
     const { text, feature } = commandQueue.shift();
-    // The actual API send
     const success = await apiSend(text, feature);
-    if (!success) {
-      // If API fails, log and continue
-      console.warn('[Auto Pulse] API send failed for:', text);
-    }
-    // Small delay between each queued command
+    if (!success) console.warn('[Auto Pulse] API send failed for:', text);
     await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
   }
   isProcessingQueue = false;
@@ -32,7 +27,7 @@ export function enqueueCommand(text, feature = 'general') {
   return true;
 }
 
-// --- Token capture (unchanged, but keep) ---
+// --- Token capture ---
 let capturedToken = null;
 function captureTokenFromHeaders(headers) {
   if (headers && headers.Authorization) {
@@ -46,6 +41,7 @@ function captureTokenFromHeaders(headers) {
     }
   }
 }
+
 const originalFetch = window.fetch;
 window.fetch = function(...args) {
   const url = args[0];
@@ -53,6 +49,7 @@ window.fetch = function(...args) {
   if (typeof url === 'string' && url.includes('discord.com/api')) captureTokenFromHeaders(options.headers);
   return originalFetch.apply(this, args);
 };
+
 const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
   if (name.toLowerCase() === 'authorization') captureTokenFromHeaders({ Authorization: value });
@@ -77,19 +74,17 @@ export function getHumanDelay(min, max) {
 
 export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// --- Unicode sanitizer (strips zero-width chars) ---
 export function sanitizeText(text) {
   return text.replace(/[\u200B-\u200F\u2060\uFEFF]/g, '');
 }
 
-// --- Status tracking ---
 export const featureStatus = {};
 export function setFeatureStatus(feature, status) {
   featureStatus[feature] = status;
   window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
 }
 
-// --- ACTUAL API SEND (internal, not exported directly) ---
+// --- API send (internal) ---
 async function apiSend(text, feature = 'general') {
   await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
   const token = await getToken();
@@ -115,13 +110,13 @@ async function apiSend(text, feature = 'general') {
   return false;
 }
 
-// --- Public `sendDiscordMessage` (uses queue) ---
+// --- Public send (uses queue) ---
 export async function sendDiscordMessage(text, feature = 'general') {
   if (isHardStopped) return false;
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (sanitized + broad keywords) ---
+// --- Smart Chat Scan (sanitized + DM detection) ---
 export function scanChat() {
   // Scan server chat
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
@@ -130,7 +125,7 @@ export function scanChat() {
     const recent = Array.from(messages).slice(-10);
     for (let msg of recent) {
       const raw = msg.innerText.toLowerCase();
-      const text = sanitizeText(raw); // strips zero-width chars
+      const text = sanitizeText(raw);
       const html = msg.innerHTML.toLowerCase();
       if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast", "banned for 999999", "owobot rules", "cowoncy has been reset", "dm", "direct message"].some(k => text.includes(k) || html.includes(k))) return "captcha";
       if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
@@ -139,26 +134,21 @@ export function scanChat() {
 
   // Scan DMs (if enabled)
   if (CONFIG.ENABLE_DM_SCAN) {
-    const dmContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-    // Actually, DMs are in the same DOM but different channel, so we can just scan the current channel if it's a DM.
-    // We'll use a separate method: check if the current page is a DM by URL.
     const isDM = window.location.pathname.includes('/@me/');
     if (isDM) {
-      // Re-scan the current container (it might be a DM channel)
       if (chatContainer) {
         const messages = chatContainer.querySelectorAll('li[class*="message"]');
         const recent = Array.from(messages).slice(-5);
         for (let msg of recent) {
           const text = sanitizeText(msg.innerText.toLowerCase());
-          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) {
-            return "captcha";
-          }
+          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) return "captcha";
         }
       }
     }
   }
   return null;
 }
+
 export function parseBalance(text) {
   const match = text.replace(/,/g, '').match(/(\d+)/);
   return match ? parseInt(match[1]) : null;
