@@ -14,14 +14,18 @@ export const CONFIG = {
   HUNT_BATTLE_INTERVAL_MAX: 16000,   // 16s
   HUNT_BATTLE_GAP_MIN: 2000,
   HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL_MIN: 13000,         // 13s
-  BJ_CF_INTERVAL_MAX: 18000,         // 18s
+  BJ_CF_INTERVAL_MIN: 15000,         // 15s (fixed)
+  BJ_CF_INTERVAL_MAX: 18000,         // 18s (fixed)
   PRE_COMMAND_PAUSE_MIN: 500,        // 0.5s
   PRE_COMMAND_PAUSE_MAX: 1500,       // 1.5s
 
   // Queue delays (for single-command queue)
-  QUEUE_DELAY_MIN: 800,              // 0.8s between queued commands
+  QUEUE_DELAY_MIN: 800,              // 0.8s
   QUEUE_DELAY_MAX: 1500,             // 1.5s
+
+  // Message jitter (now 2–3 seconds)
+  MESSAGE_JITTER_MIN: 2000,          // 2s
+  MESSAGE_JITTER_MAX: 3000,          // 3s
 
   // Startup delays (between startup commands)
   STARTUP_DELAY_MIN: 5000,           // 5s
