@@ -17,7 +17,7 @@ export const bankroll = {
     const bal = lastMsg ? parseBalance(lastMsg.innerText) : null;
     if (bal !== null) {
       this.sessionStart = bal;
-      this.sessionBudget = bal * CONFIG.BANKROLL_PERCENT;
+      this.sessionBudget = Math.round(bal * CONFIG.BANKROLL_PERCENT);
       this.profitTarget = bal * CONFIG.PROFIT_TARGET_PERCENT;
       console.log(`[Bankroll] Start: ${bal}, Budget: ${this.sessionBudget}, Target: ${this.profitTarget}`);
     }
