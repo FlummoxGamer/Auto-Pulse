@@ -10,7 +10,6 @@ function captureTokenFromHeaders(headers) {
       if (capturedToken !== token) {
         capturedToken = token;
         GM_setValue('discord_token', token);
-        console.log('[Auto Pulse] Captured live token (length: ' + token.length + ')');
       }
     }
   }
@@ -20,25 +19,19 @@ const originalFetch = window.fetch;
 window.fetch = function(...args) {
   const url = args[0];
   const options = args[1] || {};
-  if (typeof url === 'string' && url.includes('discord.com/api')) {
-    captureTokenFromHeaders(options.headers);
-  }
+  if (typeof url === 'string' && url.includes('discord.com/api')) captureTokenFromHeaders(options.headers);
   return originalFetch.apply(this, args);
 };
 
 const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-  if (name.toLowerCase() === 'authorization') {
-    captureTokenFromHeaders({ Authorization: value });
-  }
+  if (name.toLowerCase() === 'authorization') captureTokenFromHeaders({ Authorization: value });
   return originalXHR.call(this, name, value);
 };
 
 async function getToken() {
   if (capturedToken) return capturedToken;
-  let token = await GM_getValue('discord_token', null);
-  if (token) return token;
-  return null;
+  return await GM_getValue('discord_token', null);
 }
 
 export function getHumanDelay(min, max) {
@@ -51,9 +44,7 @@ export function getHumanDelay(min, max) {
   return Math.min(Math.max(delay, min), max);
 }
 
-export function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 export const featureStatus = {};
 export function setFeatureStatus(feature, status) {
@@ -62,40 +53,23 @@ export function setFeatureStatus(feature, status) {
 }
 
 export async function sendDiscordMessage(text, feature = 'general') {
-  // ** ANTI-SPAM JITTER: Wait 1-3 seconds before sending **
   await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
-
   const token = await getToken();
   if (!token) return false;
-
   const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
   if (!match) return false;
   const channelId = match[1];
-
   const headers = {
-    'Authorization': token,
-    'Content-Type': 'application/json',
-    'Accept': '*/*',
-    'Origin': 'https://discord.com',
-    'Referer': window.location.href,
+    'Authorization': token, 'Content-Type': 'application/json', 'Accept': '*/*',
+    'Origin': 'https://discord.com', 'Referer': window.location.href,
     'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" })),
-    'X-Discord-Locale': 'en-US',
-    'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
+    'X-Discord-Locale': 'en-US', 'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
   };
-
   try {
-    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
-      method: 'POST', headers, body: JSON.stringify({ content: text })
-    });
-    if (response.ok) {
-      console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
-      setFeatureStatus(feature, 'success');
-      return true;
-    }
+    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, { method: 'POST', headers, body: JSON.stringify({ content: text }) });
+    if (response.ok) { console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;'); setFeatureStatus(feature, 'success'); return true; }
   } catch (e) {}
-  
-  setFeatureStatus(feature, 'fail');
-  return false;
+  setFeatureStatus(feature, 'fail'); return false;
 }
 
 export function scanChat() {
@@ -107,9 +81,7 @@ export function scanChat() {
   for (let msg of recent) {
     const text = msg.innerText.toLowerCase();
     const html = msg.innerHTML.toLowerCase();
-    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(1/5)", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast"].some(k => text.includes(k) || html.includes(k))) {
-      return "captcha";
-    }
+    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(1/5)", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast"].some(k => text.includes(k) || html.includes(k))) return "captcha";
     if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
   }
   return null;
@@ -120,32 +92,21 @@ export function parseBalance(text) {
   return match ? parseInt(match[1]) : null;
 }
 
-// ** FIXED: Soft, short notification sound (0.2s, volume 0.2) **
 export function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
     gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.2);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
   } catch (e) {}
 }
 
 export function triggerNotification(msg) {
   try {
-    if (typeof GM_notification !== 'undefined') {
-      GM_notification({ title: "Auto Pulse", text: msg });
-      return;
-    }
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
-    } else {
-      alert(msg);
-    }
+    if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-                 }
+                                       }
