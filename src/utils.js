@@ -1,7 +1,39 @@
 import { CONFIG } from './config.js';
 
-let capturedToken = null;
+// --- Global state (exported) ---
+export let isHardStopped = false;
+export function setHardStop(value) { isHardStopped = value; }
 
+// --- Command Queue (single-threaded sending) ---
+const commandQueue = [];
+let isProcessingQueue = false;
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  while (commandQueue.length > 0 && !isHardStopped) {
+    const { text, feature } = commandQueue.shift();
+    // The actual API send
+    const success = await apiSend(text, feature);
+    if (!success) {
+      // If API fails, log and continue
+      console.warn('[Auto Pulse] API send failed for:', text);
+    }
+    // Small delay between each queued command
+    await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
+  }
+  isProcessingQueue = false;
+}
+
+export function enqueueCommand(text, feature = 'general') {
+  if (isHardStopped) return false;
+  commandQueue.push({ text, feature });
+  processQueue();
+  return true;
+}
+
+// --- Token capture (unchanged, but keep) ---
+let capturedToken = null;
 function captureTokenFromHeaders(headers) {
   if (headers && headers.Authorization) {
     let token = headers.Authorization;
@@ -14,7 +46,6 @@ function captureTokenFromHeaders(headers) {
     }
   }
 }
-
 const originalFetch = window.fetch;
 window.fetch = function(...args) {
   const url = args[0];
@@ -22,7 +53,6 @@ window.fetch = function(...args) {
   if (typeof url === 'string' && url.includes('discord.com/api')) captureTokenFromHeaders(options.headers);
   return originalFetch.apply(this, args);
 };
-
 const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
   if (name.toLowerCase() === 'authorization') captureTokenFromHeaders({ Authorization: value });
@@ -34,6 +64,7 @@ async function getToken() {
   return await GM_getValue('discord_token', null);
 }
 
+// --- Utilities ---
 export function getHumanDelay(min, max) {
   const u1 = Math.random();
   const u2 = Math.random();
@@ -46,13 +77,20 @@ export function getHumanDelay(min, max) {
 
 export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// --- Unicode sanitizer (strips zero-width chars) ---
+export function sanitizeText(text) {
+  return text.replace(/[\u200B-\u200F\u2060\uFEFF]/g, '');
+}
+
+// --- Status tracking ---
 export const featureStatus = {};
 export function setFeatureStatus(feature, status) {
   featureStatus[feature] = status;
   window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
 }
 
-export async function sendDiscordMessage(text, feature = 'general') {
+// --- ACTUAL API SEND (internal, not exported directly) ---
+async function apiSend(text, feature = 'general') {
   await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
   const token = await getToken();
   if (!token) return false;
@@ -67,11 +105,23 @@ export async function sendDiscordMessage(text, feature = 'general') {
   };
   try {
     const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, { method: 'POST', headers, body: JSON.stringify({ content: text }) });
-    if (response.ok) { console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;'); setFeatureStatus(feature, 'success'); return true; }
+    if (response.ok) {
+      console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+      setFeatureStatus(feature, 'success');
+      return true;
+    }
   } catch (e) {}
-  setFeatureStatus(feature, 'fail'); return false;
+  setFeatureStatus(feature, 'fail');
+  return false;
 }
 
+// --- Public `sendDiscordMessage` (uses queue) ---
+export async function sendDiscordMessage(text, feature = 'general') {
+  if (isHardStopped) return false;
+  return enqueueCommand(text, feature);
+}
+
+// --- Smart Chat Scan (sanitized + broad keywords) ---
 export function scanChat() {
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
   if (!chatContainer) return null;
@@ -79,9 +129,10 @@ export function scanChat() {
   if (!messages.length) return null;
   const recent = Array.from(messages).slice(-10);
   for (let msg of recent) {
-    const text = msg.innerText.toLowerCase();
+    const rawText = msg.innerText.toLowerCase();
+    const text = sanitizeText(rawText); // strips zero-width
     const html = msg.innerHTML.toLowerCase();
-    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(1/5)", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast"].some(k => text.includes(k) || html.includes(k))) return "captcha";
+    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast", "banned for 999999", "owobot rules", "cowoncy has been reset"].some(k => text.includes(k) || html.includes(k))) return "captcha";
     if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
   }
   return null;
@@ -109,4 +160,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-                                       }
+}
