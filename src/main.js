@@ -13,30 +13,33 @@ let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
+// Keep-alive audio (real looping audio using a short beep)
 function startKeepAlive() {
   if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
   try {
-    // Generate a valid silent WAV using Blob (bypasses CSP issues)
-    const buffer = new ArrayBuffer(44 + 44100);
+    // Generate a valid WAV with a very quiet tone (data URI allowed by CSP)
+    const sampleRate = 44100;
+    const duration = 1; // 1 second
+    const buffer = new ArrayBuffer(44 + sampleRate * duration * 2);
     const view = new DataView(buffer);
-    const writeString = function(offset, str) { 
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); 
-    };
-    writeString(0, 'RIFF'); view.setUint32(4, 36 + 44100, true); writeString(8, 'WAVE');
-    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true); view.setUint32(24, 44100, true); view.setUint32(28, 44100, true);
-    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    writeString(36, 'data'); view.setUint32(40, 44100, true);
-
+    const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+    writeString(0, 'RIFF'); view.setUint32(4, 36 + sampleRate * duration * 2, true); writeString(8, 'WAVE');
+    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    writeString(36, 'data'); view.setUint32(40, sampleRate * duration * 2, true);
+    // Fill with a very quiet sine wave (volume ~0.005)
+    for (let i = 0; i < sampleRate * duration; i++) {
+      const sample = Math.sin(2 * Math.PI * 1 * i / sampleRate) * 0.005;
+      view.setInt16(44 + i * 2, sample * 32767, true);
+    }
     const blob = new Blob([buffer], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
-    
     const audio = new Audio(url);
     audio.loop = true;
-    audio.volume = 0.01; // nearly silent
+    audio.volume = 1.0; // actual volume is in the sample data
     audio.play();
     audioCtx = audio;
-    console.log('[Keep-Alive] Started with valid silent WAV (Blob)');
+    console.log('[Keep-Alive] Started with quiet tone WAV');
   } catch (e) {
     console.warn('[Keep-Alive] Failed to start:', e);
   }
@@ -47,6 +50,27 @@ function stopKeepAlive() {
     audioCtx.pause();
     audioCtx = null;
   }
+}
+
+// Continuous captcha scanner (runs every 1 second)
+let captchaScanTimer = null;
+function startCaptchaScanner() {
+  captchaScanTimer = setInterval(() => {
+    if (!botStarted) return;
+    const scan = scanChat();
+    if (scan === 'captcha') {
+      console.error('%c[Auto Pulse] CAPTCHA DETECTED! Hard stopping.', 'color:red;font-weight:bold;');
+      triggerNotification('Captcha detected! Bot stopped. Solve it manually.');
+      triggerAlarm(); // short alert sound
+      stopBot();
+    } else if (scan === 'cooldown') {
+      // no need to stop for cooldown, just wait
+    }
+  }, 1000);
+}
+
+function stopCaptchaScanner() {
+  if (captchaScanTimer) clearInterval(captchaScanTimer);
 }
 
 async function autoGems() {
@@ -71,46 +95,51 @@ async function autoGems() {
   }
 }
 
-// Separate hunt/battle loop – runs every 12s
+async function runStartupCommands() {
+  await sleep(getHumanDelay(1000, 2000));
+  await sendDiscordMessage('owo cash', 'cash');
+  await sleep(getHumanDelay(2000, 3000));
+  await sendDiscordMessage('owo inv', 'autoGems');
+  await sleep(getHumanDelay(2000, 3000));
+  await sendDiscordMessage('owo lb all', 'autoItems');
+  await sleep(getHumanDelay(2000, 3000));
+  await sendDiscordMessage('owo wc all', 'autoItems');
+  await sleep(getHumanDelay(2000, 3000));
+  await sendDiscordMessage('owo pray', 'pray');
+}
+
 async function huntBattleLoop() {
   if (!botStarted) return;
 
+  // Random pre-command pause to mimic human
+  await sleep(getHumanDelay(CONFIG.PRE_COMMAND_PAUSE_MIN, CONFIG.PRE_COMMAND_PAUSE_MAX));
   await sendDiscordMessage('owo h', 'hunt');
-  await sleep(getHumanDelay(2000, 2500));
+  await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
   await sendDiscordMessage('owo b', 'battle');
 
-  // Cycle counter
   cycleCounter++;
 
-  // Auto-gem detection when hunting
-  const chat = document.querySelector('ol[class*="scroller"]');
-  if (chat && chat.innerText.includes("gem expired") && CONFIG.ENABLE_AUTO_GEMS) {
-    await autoGems();
-  }
-
-  // Pray every 5 minutes
+  // Recurring commands based on cycle counter (approximate times)
   if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
     await sendDiscordMessage('owo pray', 'pray');
     lastPrayTime = Date.now();
   }
 
-  // Auto Gems check every 20 cycles (4 mins)
-  if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % CONFIG.AUTO_GEMS_CHECK_INTERVAL === 0) {
+  if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % 20 === 0) {
     await autoGems();
   }
 
-  // Auto Items (Lootboxes/Crates) every 45 cycles (9 mins)
-  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % CONFIG.AUTO_ITEMS_INTERVAL === 0) {
+  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
     await sendDiscordMessage('owo lb all', 'autoItems');
     await sleep(getHumanDelay(2500, 4000));
     await sendDiscordMessage('owo wc all', 'autoItems');
-    await sleep(getHumanDelay(2500, 4000));
   }
 
-  huntTimer = setTimeout(huntBattleLoop, CONFIG.HUNT_BATTLE_INTERVAL);
+  // Next hunt/battle with random interval
+  const next = getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX);
+  huntTimer = setTimeout(huntBattleLoop, next);
 }
 
-// Separate gambling loop – runs every 15s
 async function gambleLoop() {
   if (!botStarted) return;
 
@@ -123,16 +152,18 @@ async function gambleLoop() {
     await playCoinflip();
   }
 
-  gambleTimer = setTimeout(gambleLoop, CONFIG.BJ_CF_INTERVAL);
+  const next = getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX);
+  gambleTimer = setTimeout(gambleLoop, next);
 }
 
 function startBot() {
   if (botStarted) return;
   botStarted = true;
   startKeepAlive();
+  startCaptchaScanner();
   bankroll.init();
-  cycleCounter = 0;
   lastPrayTime = Date.now();
+  runStartupCommands();
   huntBattleLoop();
   gambleLoop();
   updateStartStopButton();
@@ -141,6 +172,7 @@ function startBot() {
 function stopBot() {
   botStarted = false;
   stopKeepAlive();
+  stopCaptchaScanner();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
   updateStartStopButton();
