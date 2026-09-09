@@ -123,21 +123,42 @@ export async function sendDiscordMessage(text, feature = 'general') {
 
 // --- Smart Chat Scan (sanitized + broad keywords) ---
 export function scanChat() {
+  // Scan server chat
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) return null;
-  const messages = chatContainer.querySelectorAll('li[class*="message"]');
-  if (!messages.length) return null;
-  const recent = Array.from(messages).slice(-10);
-  for (let msg of recent) {
-    const rawText = msg.innerText.toLowerCase();
-    const text = sanitizeText(rawText); // strips zero-width
-    const html = msg.innerHTML.toLowerCase();
-    if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast", "banned for 999999", "owobot rules", "cowoncy has been reset"].some(k => text.includes(k) || html.includes(k))) return "captcha";
-    if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
+  if (chatContainer) {
+    const messages = chatContainer.querySelectorAll('li[class*="message"]');
+    const recent = Array.from(messages).slice(-10);
+    for (let msg of recent) {
+      const raw = msg.innerText.toLowerCase();
+      const text = sanitizeText(raw); // strips zero-width chars
+      const html = msg.innerHTML.toLowerCase();
+      if (["captcha", "are you a real human", "please complete", "link below", "type the code", "verify", "human(", "automated", "security check", "you're doing that too fast", "stop! you're doing that too fast", "banned for 999999", "owobot rules", "cowoncy has been reset", "dm", "direct message"].some(k => text.includes(k) || html.includes(k))) return "captcha";
+      if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
+    }
+  }
+
+  // Scan DMs (if enabled)
+  if (CONFIG.ENABLE_DM_SCAN) {
+    const dmContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
+    // Actually, DMs are in the same DOM but different channel, so we can just scan the current channel if it's a DM.
+    // We'll use a separate method: check if the current page is a DM by URL.
+    const isDM = window.location.pathname.includes('/@me/');
+    if (isDM) {
+      // Re-scan the current container (it might be a DM channel)
+      if (chatContainer) {
+        const messages = chatContainer.querySelectorAll('li[class*="message"]');
+        const recent = Array.from(messages).slice(-5);
+        for (let msg of recent) {
+          const text = sanitizeText(msg.innerText.toLowerCase());
+          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) {
+            return "captcha";
+          }
+        }
+      }
+    }
   }
   return null;
 }
-
 export function parseBalance(text) {
   const match = text.replace(/,/g, '').match(/(\d+)/);
   return match ? parseInt(match[1]) : null;
