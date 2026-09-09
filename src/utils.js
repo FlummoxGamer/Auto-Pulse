@@ -12,44 +12,25 @@ export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// Status tracking
 export const featureStatus = {};
 export function setFeatureStatus(feature, status) {
   featureStatus[feature] = status;
   window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
 }
 
-// Safe notification (no new Notification)
-export function triggerNotification(msg) {
-  try {
-    if (typeof GM_notification !== 'undefined') {
-      GM_notification({ title: "Auto Pulse", text: msg });
-      return;
-    }
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      // Fallback: use ServiceWorker if available, else alert
-      if (navigator.serviceWorker) {
-        navigator.serviceWorker.ready.then(reg => {
-          reg.showNotification("Auto Pulse", { body: msg });
-        }).catch(() => alert(msg));
-      } else {
-        alert(msg);
-      }
-    } else {
-      console.warn('[Auto Pulse] Notification blocked, showing alert');
-      alert(msg);
-    }
-  } catch (e) {
-    console.warn('[Auto Pulse] Notification failed:', e);
-  }
-}
-
 export async function sendDiscordMessage(text, feature = 'general') {
-  // --- METHOD 1: Discord API (no keyboard) ---
+  // 1. Get token using unsafeWindow (bypasses sandbox)
   let token = null;
   try {
-    token = localStorage.getItem('token') || window.localStorage.token;
-  } catch (e) {}
+    if (typeof unsafeWindow !== 'undefined' && unsafeWindow.localStorage) {
+      token = unsafeWindow.localStorage.getItem('token') || unsafeWindow.localStorage.token;
+    } else if (typeof localStorage !== 'undefined') {
+      token = localStorage.getItem('token') || window.localStorage.token;
+    }
+  } catch (e) {
+    console.warn('[Auto Pulse] Token retrieval failed:', e);
+  }
+
   if (token) {
     const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
     if (match) {
@@ -60,11 +41,23 @@ export async function sendDiscordMessage(text, feature = 'general') {
         'Accept': '*/*',
         'Origin': 'https://discord.com',
         'Referer': window.location.href,
-        'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" }))
+        'X-Super-Properties': btoa(JSON.stringify({
+          os: "Android",
+          browser: "Chrome",
+          device: "",
+          system_locale: "en-US",
+          browser_user_agent: navigator.userAgent,
+          browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0",
+          os_version: "Android",
+          release_channel: "stable",
+          client_build_number: "0"
+        }))
       };
       try {
         const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
-          method: 'POST', headers: headers, body: JSON.stringify({ content: text })
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ content: text })
         });
         if (response.ok) {
           console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
@@ -79,21 +72,15 @@ export async function sendDiscordMessage(text, feature = 'general') {
     }
   }
 
-  // --- METHOD 2: DOM injection (no focus, no keyboard) ---
+  // 2. Fallback: DOM injection (still needs to work without keyboard)
   const chatInput = document.querySelector('div[role="textbox"]');
   if (chatInput) {
     try {
-      // Clear existing text
       chatInput.textContent = '';
-      // Insert text
       chatInput.innerText = text;
-      // Dispatch input event (for React)
       chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
-
-      // Wait a tiny bit for React to register
       await sleep(150);
-
-      // Try clicking send button first
+      // Try clicking actual send button (if exists)
       const sendBtn = document.querySelector('button[aria-label="Send"]') ||
                       document.querySelector('button[aria-label="Send Message"]') ||
                       document.querySelector('button[class*="send"]') ||
@@ -104,8 +91,7 @@ export async function sendDiscordMessage(text, feature = 'general') {
         setFeatureStatus(feature, 'success');
         return true;
       }
-
-      // If button not found, simulate Enter key on input
+      // Fallback: Press Enter on the input
       const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true });
       chatInput.dispatchEvent(enterEvent);
       console.log(`%c[Auto Pulse] DOM Sent (Enter): ${text}`, 'color:#00ff00;font-weight:bold;');
@@ -130,7 +116,7 @@ export function scanChat() {
   for (let msg of recent) {
     const text = msg.innerText.toLowerCase();
     const html = msg.innerHTML.toLowerCase();
-    if (["captcha","are you a human","verify","link.owo.bot","banned","type the code","security check"].some(t => text.includes(t)) || html.includes("captcha")) return "captcha";
+    if (["captcha", "are you a human", "verify", "link.owo.bot", "banned", "type the code", "security check"].some(t => text.includes(t)) || html.includes("captcha")) return "captcha";
     if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
   }
   return null;
@@ -154,4 +140,20 @@ export function triggerAlarm() {
     osc.start();
     osc.stop(ctx.currentTime + 1.5);
   } catch (e) {}
-                                                   }
+}
+
+export function triggerNotification(msg) {
+  try {
+    if (typeof GM_notification !== 'undefined') {
+      GM_notification({ title: "Auto Pulse", text: msg });
+      return;
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
+    } else {
+      alert(msg);
+    }
+  } catch (e) {
+    console.warn('[Auto Pulse] Notification failed:', e);
+  }
+}
