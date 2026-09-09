@@ -8,20 +8,23 @@ export const CONFIG = {
   ENABLE_AUTO_ITEMS: true,
   ENABLE_KEEP_ALIVE: true,
 
-  // Timers
-  HUNT_BATTLE_INTERVAL: 12000,   // 12s for hunt + battle loop
-  HUNT_BATTLE_GAP_MIN: 2500,
+  // Timers (randomized)
+  HUNT_BATTLE_INTERVAL_MIN: 12000,   // 12s
+  HUNT_BATTLE_INTERVAL_MAX: 16000,   // 16s
+  HUNT_BATTLE_GAP_MIN: 2000,
   HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL: 15000,         // 15s for gambling loop (now 15s)
-  STEP_DELAY_MIN: 3000,
-  STEP_DELAY_MAX: 5000,
-  INTERVAL_MIN: 12000,
-  INTERVAL_MAX: 15000,
+  BJ_CF_INTERVAL_MIN: 13000,         // 13s
+  BJ_CF_INTERVAL_MAX: 18000,         // 18s
+  PRE_COMMAND_PAUSE_MIN: 500,        // 0.5s
+  PRE_COMMAND_PAUSE_MAX: 1500,       // 1.5s
 
-  PRAY_INTERVAL: 300000,         // 5 minutes
-  AUTO_GEMS_CHECK_INTERVAL: 20,  // every 20 cycles (4 mins)
-  AUTO_ITEMS_INTERVAL: 45,       // every 45 cycles (9 mins)
+  // Recurring timers
+  CASH_INTERVAL: 180000,             // 3 min
+  INVENTORY_INTERVAL: 240000,        // 4 min
+  ITEMS_INTERVAL: 540000,            // 9 min
+  PRAY_INTERVAL: 300000,             // 5 min
 
+  // Gambling
   BJ_BASE_BET: 10,
   BJ_MAX_BET: 320,
   CF_BASE_BET: 10,
