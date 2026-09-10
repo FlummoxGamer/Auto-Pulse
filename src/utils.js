@@ -12,7 +12,7 @@ export function setHardStop(value) {
   }
 }
 
-// --- Command Queue (Now waits for actual send) ---
+// --- Command Queue ---
 const commandQueue = [];
 let isProcessingQueue = false;
 
@@ -132,9 +132,13 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
+// --- Smart Chat Scan (Fixed Author Detection + Debug Logs) ---
 export function scanChat() {
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) return null;
+  if (!chatContainer) {
+    console.log('[Auto Pulse Debug] Chat container not found.');
+    return null;
+  }
 
   const messages = chatContainer.querySelectorAll('li[class*="message"]');
   const recent = Array.from(messages).slice(-10);
@@ -144,13 +148,24 @@ export function scanChat() {
     const text = sanitizeText(raw);
     const html = msg.innerHTML.toLowerCase();
 
-    const authorName = (msg.querySelector('[class*="username"]')?.innerText || '').toLowerCase();
+    // FIXED: Get the AUTHOR of the message, not the content
+    const authorElement = msg.querySelector('[id^="message-username-"]') || msg.querySelector('[class*="username"]');
+    const authorName = authorElement ? authorElement.innerText.toLowerCase() : 'unknown';
+
+    // Debug log for every message scanned
+    console.log(`[Auto Pulse Debug] Scanning msg from "${authorName}" | Text: "${text}"`);
+
     const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
-    const isTrackedUser = CONFIG.TRACKED_IDS.some(id => raw.includes(id.toLowerCase()) || html.includes(id.toLowerCase()));
+    const isTrackedUser = CONFIG.TRACKED_IDS.some(id => authorName.includes(id.toLowerCase()));
     const isDiscordSystem = authorName.includes('discord') || authorName.includes('system');
     const isOwO = authorName.includes('owo');
 
-    if (!isBot && !isTrackedUser && !isDiscordSystem && !isOwO) continue;
+    console.log(`[Auto Pulse Debug] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isDiscordSystem: ${isDiscordSystem}, isOwO: ${isOwO}`);
+
+    if (!isBot && !isTrackedUser && !isDiscordSystem && !isOwO) {
+      console.log(`[Auto Pulse Debug] Skipping message (not relevant).`);
+      continue;
+    }
 
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
     for (let word of highConfidence) {
@@ -199,4 +214,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-                                         }
+    }
