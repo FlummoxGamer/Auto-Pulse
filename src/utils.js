@@ -1,4 +1,4 @@
-hereimport { CONFIG } from './config.js';
+import { CONFIG } from './config.js';
 
 // --- Global hard stop + abort controller ---
 export let isHardStopped = false;
