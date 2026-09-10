@@ -39,9 +39,12 @@ export const CONFIG = {
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 
-  // --- TRACKED IDS (Base64 encoded Numeric ID) ---
-  // Decodes to: 1546771036568162317
-  TRACKED_IDS: [atob("MTU0Njc3MTAzNjU2ODE2MjMxNw==")],
+  // --- TRACKED IDS (Only for testing from your main account) ---
+  // Decodes to: 879776588789608529 (Your Main Account)
+  // The bot's own ID is automatically detected, no need to put it here!
+  TRACKED_IDS: [
+    atob("ODc5Nzc2NTg4Nzg5NjA4NTI5")
+  ],
 
   // --- WARNING KEYWORD SET ---
   TRAINING_PATTERNS: [
