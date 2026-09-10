@@ -39,8 +39,9 @@ export const CONFIG = {
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 
-  // --- TRACKED IDS (Base64 encoded) ---
-  TRACKED_IDS: [atob("Zmx1bW1veF9nYW1lcg==")],
+  // --- TRACKED IDS (Base64 encoded Numeric ID) ---
+  // Decodes to: 1546771036568162317
+  TRACKED_IDS: [atob("MTU0Njc3MTAzNjU2ODE2MjMxNw==")],
 
   // --- WARNING KEYWORD SET ---
   TRAINING_PATTERNS: [
