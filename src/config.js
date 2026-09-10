@@ -39,21 +39,17 @@ export const CONFIG = {
   BANKROLL_PERCENT: 0.10,
   PROFIT_TARGET_PERCENT: 0.05,
 
-  // --- TRACKED IDS: YOUR MAIN ACCOUNT + ALL BOTS ---
-  TRACKED_IDS: [
-    "flummox_gamer" // Your main account (case-insensitive)
-  ],
+  // --- TRACKED IDS (Base64 encoded) ---
+  TRACKED_IDS: [atob("Zmx1bW1veF9nYW1lcg==")], // flummox_gamer
 
   // --- WARNING KEYWORD SET ---
   TRAINING_PATTERNS: [
-    // OwO Bot Permanent Bans
     "you have been banned for 999999",
     "please refer to the owo bot rules",
     "advertising or involvement in selling",
     "cowoncy has been reset due to",
     "illegal gain of cowoncy",
     "multiple account usage is not allowed",
-    // OwO Bot Captcha
     "are you a real human",
     "please use the link below",
     "please complete this within 10 minutes",
@@ -61,7 +57,6 @@ export const CONFIG = {
     "verify that you are human",
     "owobot.com/captcha",
     "human(1/5)",
-    // Discord Warnings
     "you're doing that too fast",
     "stop! you're doing that too fast",
     "suspicious activity",
