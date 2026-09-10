@@ -56,9 +56,8 @@ function captureTokenFromHeaders(headers) {
     if (token && token.length > 20) {
       if (capturedToken !== token) {
         capturedToken = token;
-        capturedBotId = decodeUserIdFromToken(token); // Extract ID instantly
+        capturedBotId = decodeUserIdFromToken(token);
         GM_setValue('discord_token', token);
-        if (capturedBotId) console.log(`[Auto Pulse] Automatically detected Bot ID: ${capturedBotId}`);
       }
     }
   }
@@ -145,15 +144,26 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (Automatically detects Bot ID + Main Account) ---
-export function scanChat() {
-  const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) return null;
+// --- Smart Chat Scan (Scans new node OR falls back to last 10 messages) ---
+export function scanChat(newNode = null) {
+  let messages = [];
 
-  const messages = chatContainer.querySelectorAll('li[class*="message"]');
-  const recent = Array.from(messages).slice(-10);
+  if (newNode) {
+    // If the observer passed us a new node, only scan that one
+    if (newNode.nodeName === 'LI' || newNode.classList.contains('message')) {
+      messages = [newNode];
+    } else {
+      const innerMsg = newNode.querySelector('li[class*="message"]');
+      if (innerMsg) messages = [innerMsg];
+    }
+  } else {
+    // Fallback: scan the last 10 messages (used only for the initial startup check)
+    const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
+    if (!chatContainer) return null;
+    messages = Array.from(chatContainer.querySelectorAll('li[class*="message"]')).slice(-10);
+  }
 
-  for (let msg of recent) {
+  for (let msg of messages) {
     const contentEl = msg.querySelector('[id^="message-content-"]');
     const content = contentEl ? contentEl.innerText.toLowerCase() : msg.innerText.toLowerCase();
     const text = sanitizeText(content);
@@ -164,33 +174,34 @@ export function scanChat() {
     const authorId = idMatch ? idMatch[1] : 'unknown';
 
     const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
-    
-    // NEW: Checks against your manual list AND the automatically detected Bot ID
     const isTrackedUser = CONFIG.TRACKED_IDS.includes(authorId) || (capturedBotId && authorId === capturedBotId);
-    
     const isOwO = msg.innerHTML.toLowerCase().includes('owo');
 
-    if (!isBot && !isTrackedUser && !isOwO) {
-      continue; 
+    if (newNode) {
+      // Only log if it's a live scan to prevent console spam on startup
+      console.log(`[Chat Scan] Author ID: "${authorId}" | Content: "${text}"`);
+      console.log(`[Chat Scan] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isOwO: ${isOwO}`);
     }
+
+    if (!isBot && !isTrackedUser && !isOwO) continue;
 
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
     for (let word of highConfidence) {
       if (text.includes(word)) {
-        console.warn(`[Auto Pulse] High-confidence trigger: "${word}"`);
+        console.warn(`[Chat Scan] High-confidence trigger: "${word}"`);
         return "captcha";
       }
     }
 
     for (let pattern of CONFIG.TRAINING_PATTERNS) {
       if (text.includes(pattern)) {
-        console.warn(`[Auto Pulse] Training pattern trigger: "${pattern}"`);
+        console.warn(`[Chat Scan] Training pattern trigger: "${pattern}"`);
         return "captcha";
       }
     }
 
     if (text.includes('owobot.com')) {
-      console.warn('[Auto Pulse] Warning link detected');
+      console.warn('[Chat Scan] Warning link detected');
       return "captcha";
     }
 
@@ -221,4 +232,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-                                               }
+}
