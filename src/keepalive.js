@@ -23,16 +23,14 @@ function startWorker() {
   } catch (e) { console.warn('[Keep-Alive] Web Worker failed.'); }
 }
 
-// --- 3. Hybrid Audio Engine (1s tone, 14s silence) ---
+// --- 3. 1-Second Looping Audio (Ducking Attempt) ---
 let keepAliveAudio = null;
 let watchdogInterval = null;
 
-function createHybridAudio() {
+function createShortAudio() {
   const sampleRate = 44100;
-  const totalDuration = 15; // 15 seconds total loop
-  const toneDuration = 1;   // 1 second tone
-  const totalSamples = sampleRate * totalDuration;
-  const toneSamples = sampleRate * toneDuration;
+  const duration = 1; // 1 second loop
+  const totalSamples = sampleRate * duration;
   
   const buffer = new ArrayBuffer(44 + totalSamples * 2);
   const view = new DataView(buffer);
@@ -44,16 +42,10 @@ function createHybridAudio() {
   view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
   writeString(36, 'data'); view.setUint32(40, totalSamples * 2, true);
   
-  // Fill audio data
+  // Fill with a very quiet 440Hz tone
   for (let i = 0; i < totalSamples; i++) {
-    if (i < toneSamples) {
-      // 1 second of extremely quiet 440Hz tone
-      const sample = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.01;
-      view.setInt16(44 + i * 2, sample * 32767, true);
-    } else {
-      // 14 seconds of absolute silence
-      view.setInt16(44 + i * 2, 0, true);
-    }
+    const sample = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.01;
+    view.setInt16(44 + i * 2, sample * 32767, true);
   }
   
   const blob = new Blob([buffer], { type: 'audio/wav' });
@@ -68,7 +60,7 @@ export function startKeepAlive() {
 
   if (!keepAliveAudio) {
     try {
-      keepAliveAudio = createHybridAudio();
+      keepAliveAudio = createShortAudio();
       keepAliveAudio.loop = true;
       keepAliveAudio.volume = 0.01; 
       
@@ -77,15 +69,15 @@ export function startKeepAlive() {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'Auto Pulse - Keep-Alive Active',
           artist: 'Bot is running in the background',
-          album: 'Hybrid Engine'
+          album: 'Ducking Engine'
         });
         navigator.mediaSession.playbackState = 'playing';
       }
       
       keepAliveAudio.play().catch(() => console.warn('[Keep-Alive] Audio blocked. Tap screen to activate.'));
-      console.log('[Keep-Alive] Hybrid Audio active (1s tone / 14s silence).');
+      console.log('[Keep-Alive] 1-Second looping audio active.');
       
-      // Watchdog: Check every 5 seconds if the audio is still playing
+      // Watchdog: Only resume if paused
       if (watchdogInterval) clearInterval(watchdogInterval);
       watchdogInterval = setInterval(() => {
         if (!CONFIG.ENABLE_KEEP_ALIVE) return;
@@ -110,4 +102,4 @@ export function stopKeepAlive() {
     navigator.mediaSession.playbackState = 'none';
   }
   console.log('[Keep-Alive] Stopped.');
-  }
+        }
