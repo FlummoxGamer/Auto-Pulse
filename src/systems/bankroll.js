@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js';
-import { sendDiscordMessage, parseBalance, sleep } from './utils.js';
+import { CONFIG } from '../core/config.js';
+import { sendDiscordMessage, parseBalance, sleep } from '../core/utils.js';
 
 export const bankroll = {
   sessionStart: null,
