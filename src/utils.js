@@ -36,8 +36,19 @@ export function enqueueCommand(text, feature = 'general') {
   });
 }
 
-// --- Token capture ---
+// --- Token & Bot ID capture ---
 let capturedToken = null;
+let capturedBotId = null;
+
+function decodeUserIdFromToken(token) {
+  try {
+    const part = token.split('.')[0];
+    let base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    return atob(base64);
+  } catch (e) { return null; }
+}
+
 function captureTokenFromHeaders(headers) {
   if (headers && headers.Authorization) {
     let token = headers.Authorization;
@@ -45,7 +56,9 @@ function captureTokenFromHeaders(headers) {
     if (token && token.length > 20) {
       if (capturedToken !== token) {
         capturedToken = token;
+        capturedBotId = decodeUserIdFromToken(token); // Extract ID instantly
         GM_setValue('discord_token', token);
+        if (capturedBotId) console.log(`[Auto Pulse] Automatically detected Bot ID: ${capturedBotId}`);
       }
     }
   }
@@ -132,7 +145,7 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (Fixed Author ID and Content Extraction) ---
+// --- Smart Chat Scan (Automatically detects Bot ID + Main Account) ---
 export function scanChat() {
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
   if (!chatContainer) return null;
@@ -141,31 +154,26 @@ export function scanChat() {
   const recent = Array.from(messages).slice(-10);
 
   for (let msg of recent) {
-    // 1. Extract ONLY the message content (not username/timestamp)
     const contentEl = msg.querySelector('[id^="message-content-"]');
     const content = contentEl ? contentEl.innerText.toLowerCase() : msg.innerText.toLowerCase();
     const text = sanitizeText(content);
     
-    // 2. Extract the Author's Numeric ID from their Avatar URL (100% accurate)
     const avatarImg = msg.querySelector('img[class*="avatar"]');
     const avatarSrc = avatarImg ? avatarImg.src : '';
     const idMatch = avatarSrc.match(/\/avatars\/(\d+)\//) || avatarSrc.match(/\/users\/(\d+)\//);
     const authorId = idMatch ? idMatch[1] : 'unknown';
 
-    // 3. Identify bots and OwO using the full HTML/username
     const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
-    const isTrackedUser = CONFIG.TRACKED_IDS.includes(authorId);
+    
+    // NEW: Checks against your manual list AND the automatically detected Bot ID
+    const isTrackedUser = CONFIG.TRACKED_IDS.includes(authorId) || (capturedBotId && authorId === capturedBotId);
+    
     const isOwO = msg.innerHTML.toLowerCase().includes('owo');
 
-    // Debug Logs (Keep these for now to see what's happening)
-    console.log(`[Auto Pulse Debug] Scanning Author ID: "${authorId}" | Content: "${text}"`);
-    console.log(`[Auto Pulse Debug] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isOwO: ${isOwO}`);
-
     if (!isBot && !isTrackedUser && !isOwO) {
-      continue; // Skip messages from random people
+      continue; 
     }
 
-    // Layer 1: High-confidence words
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
     for (let word of highConfidence) {
       if (text.includes(word)) {
@@ -174,7 +182,6 @@ export function scanChat() {
       }
     }
 
-    // Layer 2: Training patterns
     for (let pattern of CONFIG.TRAINING_PATTERNS) {
       if (text.includes(pattern)) {
         console.warn(`[Auto Pulse] Training pattern trigger: "${pattern}"`);
@@ -182,7 +189,6 @@ export function scanChat() {
       }
     }
 
-    // Layer 3: Warning link
     if (text.includes('owobot.com')) {
       console.warn('[Auto Pulse] Warning link detected');
       return "captcha";
