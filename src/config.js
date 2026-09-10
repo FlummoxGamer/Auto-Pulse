@@ -40,7 +40,7 @@ export const CONFIG = {
   PROFIT_TARGET_PERCENT: 0.05,
 
   // --- TRACKED IDS (Base64 encoded) ---
-  TRACKED_IDS: [atob("Zmx1bW1veF9nYW1lcg==")], // flummox_gamer
+  TRACKED_IDS: [atob("Zmx1bW1veF9nYW1lcg==")],
 
   // --- WARNING KEYWORD SET ---
   TRAINING_PATTERNS: [
