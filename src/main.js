@@ -1,4 +1,4 @@
-hereimport { CONFIG, GEM_TYPES } from './config.js';
+import { CONFIG, GEM_TYPES } from './config.js';
 import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './utils.js';
 import { startKeepAlive, stopKeepAlive } from './keepalive.js';
 import { playCoinflip } from './coinflip.js';
