@@ -1,6 +1,6 @@
-import { CONFIG, GEM_TYPES } from './config.js';
+hereimport { CONFIG, GEM_TYPES } from './config.js';
 import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './utils.js';
-import { playBlackjack } from './blackjack.js';
+import { startKeepAlive, stopKeepAlive } from './keepalive.js';
 import { playCoinflip } from './coinflip.js';
 import { bankroll } from './bankroll.js';
 
@@ -8,32 +8,10 @@ let botStarted = false;
 let isStartupRunning = false;
 let huntTimer = null;
 let gambleTimer = null;
-let keepAliveAudio = null;
 let cycleCounter = 0;
 let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
-
-// --- Keep-Alive (Silent Loop) ---
-function startKeepAlive() {
-  if (!CONFIG.ENABLE_KEEP_ALIVE || keepAliveAudio) return;
-  try {
-    const sampleRate = 44100, duration = 10;
-    const buffer = new ArrayBuffer(44 + sampleRate * duration * 2);
-    const view = new DataView(buffer);
-    const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
-    writeString(0, 'RIFF'); view.setUint32(4, 36 + sampleRate * duration * 2, true); writeString(8, 'WAVE');
-    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    writeString(36, 'data'); view.setUint32(40, sampleRate * duration * 2, true);
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    const audio = new Audio(URL.createObjectURL(blob));
-    audio.loop = true; audio.volume = 0.01; audio.play();
-    keepAliveAudio = audio;
-  } catch (e) {}
-}
-
-function stopKeepAlive() { if (keepAliveAudio) { keepAliveAudio.pause(); keepAliveAudio = null; } }
 
 // --- Observer (Real-time scan of new messages) ---
 let observer = null;
@@ -138,14 +116,12 @@ async function gambleLoop() {
     if (botStarted && !isHardStopped) gambleTimer = setTimeout(gambleLoop, 3000);
     return;
   }
-  if (CONFIG.ENABLE_BLACKJACK && CONFIG.ENABLE_COINFLIP) {
-    if (Math.random() < 0.5) await playBlackjack();
-    else await playCoinflip();
-  } else if (CONFIG.ENABLE_BLACKJACK) {
-    await playBlackjack();
-  } else if (CONFIG.ENABLE_COINFLIP) {
+  
+  // Blackjack removed, only Coinflip remains
+  if (CONFIG.ENABLE_COINFLIP) {
     await playCoinflip();
   }
+  
   gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
@@ -165,7 +141,8 @@ async function startBot() {
   botStarted = true;
   setHardStop(false); 
   updateStartStopButton();
-  startKeepAlive();
+  
+  startKeepAlive(); // Uses the new engine
   startObserver(); 
   
   await bankroll.init(); 
@@ -182,7 +159,7 @@ function stopBot() {
   isStartupRunning = false;
   setHardStop(true);
   updateStartStopButton();
-  stopKeepAlive();
+  stopKeepAlive(); // Uses the new engine
   stopObserver();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
@@ -203,7 +180,7 @@ function updateStatusDots() {
   }
 }
 
-// --- UI Creation ---
+// --- UI Creation (Blackjack removed) ---
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
@@ -221,9 +198,10 @@ function createUI() {
   startStopBtn.addEventListener('click', () => { if (!botStarted) startBot(); else stopBot(); });
   panel.appendChild(startStopBtn);
 
+  // Blackjack is completely removed from the UI
   const toggles = [
     { label: 'Hunt', key: 'ENABLE_HUNT' }, { label: 'Battle', key: 'ENABLE_BATTLE' },
-    { label: 'Blackjack', key: 'ENABLE_BLACKJACK' }, { label: 'Coinflip', key: 'ENABLE_COINFLIP' },
+    { label: 'Coinflip', key: 'ENABLE_COINFLIP' },
     { label: 'Pray', key: 'ENABLE_PRAY' }, { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' },
     { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' }, { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
   ];
@@ -243,7 +221,9 @@ function createUI() {
     checkbox.checked = CONFIG[t.key];
     checkbox.addEventListener('change', () => {
       CONFIG[t.key] = checkbox.checked;
-      if (t.key === 'ENABLE_KEEP_ALIVE') { if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); }
+      if (t.key === 'ENABLE_KEEP_ALIVE') { 
+        if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); 
+      }
     });
     row.appendChild(dot); row.appendChild(label); row.appendChild(checkbox); panel.appendChild(row);
   });
