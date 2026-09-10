@@ -130,17 +130,20 @@ async function gambleLoop() {
   gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
-function startBot() {
+async function startBot() {
   if (botStarted) return;
   botStarted = true;
-  setHardStop(false); // Reset
+  setHardStop(false); 
   updateStartStopButton();
   startKeepAlive();
   startObserver();
-  bankroll.init();
+  
+  await bankroll.init(); // Wait for bankroll to finish
   lastPrayTime = Date.now();
-  runStartupCommands();
-  huntBattleLoop();
+  
+  await runStartupCommands(); // Wait for ALL startup commands to finish
+  
+  huntBattleLoop(); // Now start the loops
   gambleLoop();
 }
 
