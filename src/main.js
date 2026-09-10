@@ -1,4 +1,4 @@
-import { CONFIG, GEM_TYPES } from './config.js';
+hereimport { CONFIG, GEM_TYPES } from './config.js';
 import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './utils.js';
 import { playBlackjack } from './blackjack.js';
 import { playCoinflip } from './coinflip.js';
@@ -8,13 +8,34 @@ let botStarted = false;
 let isStartupRunning = false;
 let huntTimer = null;
 let gambleTimer = null;
-let audioCtx = null;
+let keepAliveAudio = null;
 let cycleCounter = 0;
 let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
-// --- MutationObserver for real-time chat scan ---
+// --- Keep-Alive (Silent Loop) ---
+function startKeepAlive() {
+  if (!CONFIG.ENABLE_KEEP_ALIVE || keepAliveAudio) return;
+  try {
+    const sampleRate = 44100, duration = 10;
+    const buffer = new ArrayBuffer(44 + sampleRate * duration * 2);
+    const view = new DataView(buffer);
+    const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+    writeString(0, 'RIFF'); view.setUint32(4, 36 + sampleRate * duration * 2, true); writeString(8, 'WAVE');
+    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    writeString(36, 'data'); view.setUint32(40, sampleRate * duration * 2, true);
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.loop = true; audio.volume = 0.01; audio.play();
+    keepAliveAudio = audio;
+  } catch (e) {}
+}
+
+function stopKeepAlive() { if (keepAliveAudio) { keepAliveAudio.pause(); keepAliveAudio = null; } }
+
+// --- Observer (Real-time scan of new messages) ---
 let observer = null;
 
 function startObserver() {
@@ -31,11 +52,11 @@ function startObserver() {
     for (let mutation of mutations) {
       for (let node of mutation.addedNodes) {
         if (node.nodeType === 1) {
-          const scan = scanChat(node); // Scans ONLY the new message
-          if (scan === 'captcha') {
+          const scan = scanChat(node); 
+          if (scan && scan.type === 'captcha') {
             console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
             playNotificationSound();
-            triggerNotification('Captcha detected! Bot stopped.');
+            triggerNotification(`Captcha detected! Bot stopped.\nTrigger: "${scan.trigger}"`);
             stopBot();
             return;
           }
@@ -52,28 +73,7 @@ function stopObserver() {
   if (observer) { observer.disconnect(); observer = null; }
 }
 
-// --- Keep-alive (same as before) ---
-function startKeepAlive() {
-  if (!CONFIG.ENABLE_KEEP_ALIVE || audioCtx) return;
-  try {
-    const sampleRate = 44100, duration = 10;
-    const buffer = new ArrayBuffer(44 + sampleRate * duration * 2);
-    const view = new DataView(buffer);
-    const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
-    writeString(0, 'RIFF'); view.setUint32(4, 36 + sampleRate * duration * 2, true); writeString(8, 'WAVE');
-    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    writeString(36, 'data'); view.setUint32(40, sampleRate * duration * 2, true);
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    const audio = new Audio(URL.createObjectURL(blob));
-    audio.loop = true; audio.volume = 0.01; audio.play();
-    audioCtx = audio;
-  } catch (e) {}
-}
-
-function stopKeepAlive() { if (audioCtx) { audioCtx.pause(); audioCtx = null; } }
-
-// --- Auto Gems (same, but uses queue via sendDiscordMessage) ---
+// --- Auto Gems ---
 async function autoGems() {
   await sendDiscordMessage('owo inv', 'autoGems');
   await sleep(4000);
@@ -87,15 +87,18 @@ async function autoGems() {
   while ((match = gemRegex.exec(invText)) !== null) ownedGemIds.add(match[1]);
   for (const [category, ids] of Object.entries(GEM_TYPES)) {
     for (const id of ids) {
-      if (ownedGemIds.has(id)) { await sendDiscordMessage(`owo use ${id}`, 'autoGems'); await sleep(getHumanDelay(2000, 3200)); break; }
+      if (ownedGemIds.has(id)) {
+        await sendDiscordMessage(`owo use ${id}`, 'autoGems');
+        await sleep(getHumanDelay(2000, 3200));
+        break;
+      }
     }
   }
 }
 
-// --- Startup commands (will be queued one by one) ---
+// --- Startup Sequence ---
 async function runStartupCommands() {
   isStartupRunning = true;
-  // 'owo cash' is already sent by bankroll.init() – no need to send it again here
   const commands = ['owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
   for (const cmd of commands) {
     if (!botStarted || isHardStopped) return;
@@ -105,7 +108,7 @@ async function runStartupCommands() {
   isStartupRunning = false;
 }
 
-// --- Main loops (now they just enqueue commands; no direct sends) ---
+// --- Main Loops ---
 async function huntBattleLoop() {
   if (!botStarted || isStartupRunning || isHardStopped) {
     if (botStarted && !isHardStopped) huntTimer = setTimeout(huntBattleLoop, 3000);
@@ -114,7 +117,9 @@ async function huntBattleLoop() {
   await sendDiscordMessage('owo h', 'hunt');
   await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
   await sendDiscordMessage('owo b', 'battle');
+  
   cycleCounter++;
+
   if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
     await sendDiscordMessage('owo pray', 'pray');
     lastPrayTime = Date.now();
@@ -144,25 +149,24 @@ async function gambleLoop() {
   gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
+// --- Start / Stop Controls ---
 async function startBot() {
   if (botStarted) return;
   
-  // 1. Check the last 10 messages BEFORE starting
   console.log('[Auto Pulse Debug] Running startup safety scan...');
   const startupScan = scanChat(); 
-  if (startupScan === 'captcha') {
+  if (startupScan && startupScan.type === 'captcha') {
     console.error('[Auto Pulse] CAPTCHA DETECTED during startup scan! Aborting start.');
     playNotificationSound();
-    triggerNotification('Warning found in recent chat! Bot aborted.');
+    triggerNotification(`Warning found in recent chat! Bot aborted.\nTrigger: "${startupScan.trigger}"`);
     return;
   }
 
-  // 2. If clear, proceed
   botStarted = true;
   setHardStop(false); 
   updateStartStopButton();
   startKeepAlive();
-  startObserver(); // Starts the real-time observer for new messages
+  startObserver(); 
   
   await bankroll.init(); 
   lastPrayTime = Date.now();
@@ -175,8 +179,8 @@ async function startBot() {
 
 function stopBot() {
   botStarted = false;
-  setHardStop(true); // Kill all sends instantly
   isStartupRunning = false;
+  setHardStop(true);
   updateStartStopButton();
   stopKeepAlive();
   stopObserver();
@@ -199,6 +203,7 @@ function updateStatusDots() {
   }
 }
 
+// --- UI Creation ---
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
