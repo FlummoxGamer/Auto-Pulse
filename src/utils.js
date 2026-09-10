@@ -1,8 +1,17 @@
 import { CONFIG } from './config.js';
 
-// --- Global state (exported) ---
+// --- Global hard stop + abort controller (kills all pending fetches) ---
 export let isHardStopped = false;
-export function setHardStop(value) { isHardStopped = value; }
+let abortController = new AbortController();
+
+export function setHardStop(value) {
+  isHardStopped = value;
+  if (value) {
+    // ABORT any pending fetches instantly
+    abortController.abort();
+    abortController = new AbortController();
+  }
+}
 
 // --- Command Queue (single-threaded sending) ---
 const commandQueue = [];
@@ -74,6 +83,7 @@ export function getHumanDelay(min, max) {
 
 export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// --- Unicode Sanitizer (strips zero-width characters) ---
 export function sanitizeText(text) {
   return text.replace(/[\u200B-\u200F\u2060\uFEFF]/g, '');
 }
@@ -84,88 +94,98 @@ export function setFeatureStatus(feature, status) {
   window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
 }
 
-// --- API send (internal) ---
+// --- ACTUAL API SEND (uses AbortController signal) ---
 async function apiSend(text, feature = 'general') {
   await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
+  if (isHardStopped) return false;
+
   const token = await getToken();
   if (!token) return false;
   const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
   if (!match) return false;
   const channelId = match[1];
+
   const headers = {
     'Authorization': token, 'Content-Type': 'application/json', 'Accept': '*/*',
     'Origin': 'https://discord.com', 'Referer': window.location.href,
     'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" })),
     'X-Discord-Locale': 'en-US', 'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
   };
+
   try {
-    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, { method: 'POST', headers, body: JSON.stringify({ content: text }) });
+    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+      method: 'POST', headers, body: JSON.stringify({ content: text }),
+      signal: abortController.signal
+    });
     if (response.ok) {
       console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
       setFeatureStatus(feature, 'success');
       return true;
     }
-  } catch (e) {}
+  } catch (e) {
+    // AbortError is expected on hard stop
+    if (e.name !== 'AbortError') console.warn('[Auto Pulse] API send error:', e);
+  }
   setFeatureStatus(feature, 'fail');
   return false;
 }
 
-// --- Public send (uses queue) ---
+// --- Public send (queued) ---
 export async function sendDiscordMessage(text, feature = 'general') {
   if (isHardStopped) return false;
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (sanitized + DM detection) ---
+// --- Smart Chat Scan (author filter + 3-layer detection) ---
 export function scanChat() {
-  // Scan server chat
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (chatContainer) {
-    const messages = chatContainer.querySelectorAll('li[class*="message"]');
-    const recent = Array.from(messages).slice(-10);
-    for (let msg of recent) {
-      const raw = msg.innerText.toLowerCase();
-      const text = sanitizeText(raw);
-      const html = msg.innerHTML.toLowerCase();
-      
-      // Server keywords (NO "dm" here – that's only for DM scanner)
-      const serverKeywords = [
-        "captcha", "are you a real human", "bot","10 minutes","please complete", "link below", 
-        "type the code", "verify","human","real","ban","link","verification", "human(", "automated", "security check", 
-        "you're doing that too fast", "stop! you're doing that too fast", 
-        "banned for 999999", "owobot rules", "cowoncy has been reset"
-      ];
-      
-      for (let k of serverKeywords) {
-        if (text.includes(k) || html.includes(k)) {
-          console.warn(`[Auto Pulse] FALSE FLAG? Server keyword triggered: "${k}" in message: "${raw}"`);
-          return "captcha";
-        }
-      }
-      
-      if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
-    }
-  }
+  if (!chatContainer) return null;
 
-  // Scan DMs (unchanged – only for DM channels)
-  if (CONFIG.ENABLE_DM_SCAN) {
-    const isDM = window.location.pathname.includes('/@me/');
-    if (isDM) {
-      if (chatContainer) {
-        const messages = chatContainer.querySelectorAll('li[class*="message"]');
-        const recent = Array.from(messages).slice(-5);
-        for (let msg of recent) {
-          const text = sanitizeText(msg.innerText.toLowerCase());
-          if (text.includes("human") || text.includes("captcha") || text.includes("owobot.com/captcha") || text.includes("verify")) {
-            console.warn(`[Auto Pulse] DM false flag? Triggered by: "${text}"`);
-            return "captcha";
-          }
-        }
+  const messages = chatContainer.querySelectorAll('li[class*="message"]');
+  const recent = Array.from(messages).slice(-10);
+
+  for (let msg of recent) {
+    const raw = msg.innerText.toLowerCase();
+    const text = sanitizeText(raw);
+    const html = msg.innerHTML.toLowerCase();
+
+    // Layer 1: Author Filter (only bots, Discord, or tracked users)
+    const authorName = (msg.querySelector('[class*="username"]')?.innerText || '').toLowerCase();
+    const isBot = html.includes('bot') || html.includes('app');
+    const isTrackedUser = CONFIG.TRACKED_IDS.some(id => authorName.includes(id.toLowerCase()));
+    const isDiscordSystem = authorName.includes('discord') || authorName.includes('system');
+    const isOwO = authorName.includes('owo');
+
+    if (!isBot && !isTrackedUser && !isDiscordSystem && !isOwO) continue;
+
+    // Layer 2: Rare high-confidence words (fast path)
+    const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
+    for (let word of highConfidence) {
+      if (text.includes(word)) {
+        console.warn(`[Auto Pulse] High-confidence trigger: "${word}"`);
+        return "captcha";
       }
     }
+
+    // Layer 3: Training patterns (full warning phrases)
+    for (let pattern of CONFIG.TRAINING_PATTERNS) {
+      if (text.includes(pattern)) {
+        console.warn(`[Auto Pulse] Training pattern trigger: "${pattern}"`);
+        return "captcha";
+      }
+    }
+
+    // Warning structure detection (link or embed)
+    if (html.includes('owobot.com') || html.includes('captcha-link') || text.includes('owobot.com')) {
+      console.warn('[Auto Pulse] Warning link detected');
+      return "captcha";
+    }
+
+    if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
   }
   return null;
 }
+
 export function parseBalance(text) {
   const match = text.replace(/,/g, '').match(/(\d+)/);
   return match ? parseInt(match[1]) : null;
@@ -188,4 +208,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-}
+  }
