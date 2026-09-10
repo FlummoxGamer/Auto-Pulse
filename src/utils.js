@@ -132,41 +132,40 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (Fixed Author Detection + Debug Logs) ---
+// --- Smart Chat Scan (Fixed Author ID and Content Extraction) ---
 export function scanChat() {
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) {
-    console.log('[Auto Pulse Debug] Chat container not found.');
-    return null;
-  }
+  if (!chatContainer) return null;
 
   const messages = chatContainer.querySelectorAll('li[class*="message"]');
   const recent = Array.from(messages).slice(-10);
 
   for (let msg of recent) {
-    const raw = msg.innerText.toLowerCase();
-    const text = sanitizeText(raw);
-    const html = msg.innerHTML.toLowerCase();
+    // 1. Extract ONLY the message content (not username/timestamp)
+    const contentEl = msg.querySelector('[id^="message-content-"]');
+    const content = contentEl ? contentEl.innerText.toLowerCase() : msg.innerText.toLowerCase();
+    const text = sanitizeText(content);
+    
+    // 2. Extract the Author's Numeric ID from their Avatar URL (100% accurate)
+    const avatarImg = msg.querySelector('img[class*="avatar"]');
+    const avatarSrc = avatarImg ? avatarImg.src : '';
+    const idMatch = avatarSrc.match(/\/avatars\/(\d+)\//) || avatarSrc.match(/\/users\/(\d+)\//);
+    const authorId = idMatch ? idMatch[1] : 'unknown';
 
-    // FIXED: Get the AUTHOR of the message, not the content
-    const authorElement = msg.querySelector('[id^="message-username-"]') || msg.querySelector('[class*="username"]');
-    const authorName = authorElement ? authorElement.innerText.toLowerCase() : 'unknown';
-
-    // Debug log for every message scanned
-    console.log(`[Auto Pulse Debug] Scanning msg from "${authorName}" | Text: "${text}"`);
-
+    // 3. Identify bots and OwO using the full HTML/username
     const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
-    const isTrackedUser = CONFIG.TRACKED_IDS.some(id => authorName.includes(id.toLowerCase()));
-    const isDiscordSystem = authorName.includes('discord') || authorName.includes('system');
-    const isOwO = authorName.includes('owo');
+    const isTrackedUser = CONFIG.TRACKED_IDS.includes(authorId);
+    const isOwO = msg.innerHTML.toLowerCase().includes('owo');
 
-    console.log(`[Auto Pulse Debug] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isDiscordSystem: ${isDiscordSystem}, isOwO: ${isOwO}`);
+    // Debug Logs (Keep these for now to see what's happening)
+    console.log(`[Auto Pulse Debug] Scanning Author ID: "${authorId}" | Content: "${text}"`);
+    console.log(`[Auto Pulse Debug] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isOwO: ${isOwO}`);
 
-    if (!isBot && !isTrackedUser && !isDiscordSystem && !isOwO) {
-      console.log(`[Auto Pulse Debug] Skipping message (not relevant).`);
-      continue;
+    if (!isBot && !isTrackedUser && !isOwO) {
+      continue; // Skip messages from random people
     }
 
+    // Layer 1: High-confidence words
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
     for (let word of highConfidence) {
       if (text.includes(word)) {
@@ -175,6 +174,7 @@ export function scanChat() {
       }
     }
 
+    // Layer 2: Training patterns
     for (let pattern of CONFIG.TRAINING_PATTERNS) {
       if (text.includes(pattern)) {
         console.warn(`[Auto Pulse] Training pattern trigger: "${pattern}"`);
@@ -182,7 +182,8 @@ export function scanChat() {
       }
     }
 
-    if (html.includes('owobot.com') || html.includes('captcha-link') || text.includes('owobot.com')) {
+    // Layer 3: Warning link
+    if (text.includes('owobot.com')) {
       console.warn('[Auto Pulse] Warning link detected');
       return "captcha";
     }
@@ -214,4 +215,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-    }
+                                               }
