@@ -122,7 +122,7 @@ async function gambleLoop() {
     await playCoinflip();
   }
   
-  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.BJ_CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
+  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
 }
 
 // --- Start / Stop Controls ---
