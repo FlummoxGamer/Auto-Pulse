@@ -137,18 +137,30 @@ async function gambleLoop() {
 
 async function startBot() {
   if (botStarted) return;
+  
+  // 1. Check the last 10 messages BEFORE starting
+  console.log('[Auto Pulse Debug] Running startup safety scan...');
+  const startupScan = scanChat(); 
+  if (startupScan === 'captcha') {
+    console.error('[Auto Pulse] CAPTCHA DETECTED during startup scan! Aborting start.');
+    playNotificationSound();
+    triggerNotification('Warning found in recent chat! Bot aborted.');
+    return;
+  }
+
+  // 2. If clear, proceed
   botStarted = true;
   setHardStop(false); 
   updateStartStopButton();
   startKeepAlive();
-  startObserver();
+  startObserver(); // Starts the real-time observer for new messages
   
-  await bankroll.init(); // Wait for bankroll to finish
+  await bankroll.init(); 
   lastPrayTime = Date.now();
   
-  await runStartupCommands(); // Wait for ALL startup commands to finish
+  await runStartupCommands(); 
   
-  huntBattleLoop(); // Now start the loops
+  huntBattleLoop(); 
   gambleLoop();
 }
 
