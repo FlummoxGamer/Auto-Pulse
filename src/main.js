@@ -1,8 +1,8 @@
-import { CONFIG, GEM_TYPES } from './config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './utils.js';
-import { startKeepAlive, stopKeepAlive } from './keepalive.js';
-import { playCoinflip } from './coinflip.js';
-import { bankroll } from './bankroll.js';
+import { CONFIG, GEM_TYPES } from './core/config.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './core/utils.js';
+import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
+import { playCoinflip } from './games/coinflip.js';
+import { bankroll } from './systems/bankroll.js';
 
 let botStarted = false;
 let isStartupRunning = false;
