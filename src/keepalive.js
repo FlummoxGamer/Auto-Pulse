@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+hereimport { CONFIG } from './config.js';
 
 // --- 1. Visibility Spoofing ---
 // Forces the browser to think the tab is always visible, even when you switch apps.
@@ -61,11 +61,11 @@ export function startKeepAlive() {
       
       keepAliveAudio.play().catch(() => console.warn('[Keep-Alive] Audio blocked by browser. User interaction needed.'));
       
-      // MediaSession API
+      // MediaSession API - CLEAR STATUS TEXT
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-          title: 'Auto Pulse',
-          artist: 'Running in background...',
+          title: 'Auto Pulse - Keep-Alive Active',
+          artist: 'Bot is running in the background',
           album: 'Bot Engine'
         });
         navigator.mediaSession.playbackState = 'playing';
@@ -85,4 +85,4 @@ export function stopKeepAlive() {
     navigator.mediaSession.playbackState = 'none';
   }
   console.log('[Keep-Alive] Stopped.');
-      }
+    }
