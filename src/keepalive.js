@@ -1,7 +1,6 @@
-import { CONFIG } from './config.js';
+hereimport { CONFIG } from './config.js';
 
 // --- 1. Visibility Spoofing ---
-// Forces the browser to think the tab is always visible, even when you switch apps.
 function enableVisibilitySpoof() {
   try {
     Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
@@ -11,17 +10,15 @@ function enableVisibilitySpoof() {
   } catch (e) { console.warn('[Keep-Alive] Visibility Spoof failed.'); }
 }
 
-// --- 2. Web Worker (Prevents Browser Throttling) ---
+// --- 2. Web Worker ---
 let keepAliveWorker = null;
 function startWorker() {
   if (keepAliveWorker) return;
   try {
-    const workerCode = `
-      setInterval(() => { postMessage('ping'); }, 1000);
-    `;
+    const workerCode = `setInterval(() => { postMessage('ping'); }, 1000);`;
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     keepAliveWorker = new Worker(URL.createObjectURL(blob));
-    keepAliveWorker.onmessage = () => { /* Keeps the main thread awake */ };
+    keepAliveWorker.onmessage = () => {};
     console.log('[Keep-Alive] Web Worker active.');
   } catch (e) { console.warn('[Keep-Alive] Web Worker failed.'); }
 }
@@ -50,7 +47,7 @@ export function startKeepAlive() {
       const blob = new Blob([buffer], { type: 'audio/wav' });
       keepAliveAudio = new Audio(URL.createObjectURL(blob));
       keepAliveAudio.loop = true;
-      keepAliveAudio.volume = 0.01; // Extremely quiet, but not completely silent to keep Android from killing it
+      keepAliveAudio.volume = 0.01;
       
       // Auto-resume if Android pauses it
       keepAliveAudio.onpause = () => { 
@@ -58,10 +55,22 @@ export function startKeepAlive() {
               if (CONFIG.ENABLE_KEEP_ALIVE && keepAliveAudio) keepAliveAudio.play().catch(()=>{}); 
           }, 1000); 
       };
+
+      // --- ATTEMPT: Audio Session API (ambient mode) ---
+      // This tells Android: "This audio is just ambient, don't take focus."
+      // It may not work on Quetta yet, but it won't break anything.
+      if ('audioSession' in navigator) {
+        try {
+          navigator.audioSession.type = 'ambient';
+          console.log('[Keep-Alive] Audio Session API set to "ambient" (best-effort).');
+        } catch (e) {
+          console.warn('[Keep-Alive] Audio Session API not supported, using default.');
+        }
+      }
       
-      keepAliveAudio.play().catch(() => console.warn('[Keep-Alive] Audio blocked by browser. User interaction needed.'));
+      keepAliveAudio.play().catch(() => console.warn('[Keep-Alive] Audio blocked. Tap screen to activate.'));
       
-      // MediaSession API - CLEAR STATUS TEXT
+      // MediaSession API - Clear status text
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'Auto Pulse - Keep-Alive Active',
@@ -85,4 +94,4 @@ export function stopKeepAlive() {
     navigator.mediaSession.playbackState = 'none';
   }
   console.log('[Keep-Alive] Stopped.');
-    }
+        }
