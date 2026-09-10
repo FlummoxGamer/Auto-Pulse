@@ -24,19 +24,28 @@ function startObserver() {
     console.log('[Auto Pulse Debug] Observer: Chat container not found.');
     return;
   }
-  observer = new MutationObserver(() => {
+  
+  observer = new MutationObserver((mutations) => {
     if (!botStarted || isHardStopped) return;
-    console.log('[Auto Pulse Debug] Observer triggered, scanning chat...');
-    const scan = scanChat();
-    if (scan === 'captcha') {
-      console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
-      playNotificationSound();
-      triggerNotification('Captcha detected! Bot stopped.');
-      stopBot();
+    
+    for (let mutation of mutations) {
+      for (let node of mutation.addedNodes) {
+        if (node.nodeType === 1) {
+          const scan = scanChat(node); // Scans ONLY the new message
+          if (scan === 'captcha') {
+            console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
+            playNotificationSound();
+            triggerNotification('Captcha detected! Bot stopped.');
+            stopBot();
+            return;
+          }
+        }
+      }
     }
   });
-  observer.observe(chatContainer, { childList: true, subtree: true, characterData: true });
-  console.log('[Auto Pulse Debug] Observer started.');
+  
+  observer.observe(chatContainer, { childList: true, subtree: true });
+  console.log('[Auto Pulse Debug] Optimized Observer started.');
 }
 
 function stopObserver() {
