@@ -40,7 +40,6 @@ export const CONFIG = {
   PROFIT_TARGET_PERCENT: 0.05,
 
   // --- TRACKED IDS (Only for testing from your main account) ---
-  // Decodes to: 879776588789608529 (Your Main Account)
   // The bot's own ID is automatically detected, no need to put it here!
   TRACKED_IDS: [
     atob("ODc5Nzc2NTg4Nzg5NjA4NTI5")
