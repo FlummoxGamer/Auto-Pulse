@@ -1,4 +1,5 @@
 import { CONFIG } from './config.js';
+import { isOnCooldown } from '../systems/cooldown.js';
 
 // --- Global hard stop + abort controller ---
 export let isHardStopped = false;
@@ -19,8 +20,16 @@ let isProcessingQueue = false;
 async function processQueue() {
   if (isProcessingQueue) return;
   isProcessingQueue = true;
+  
   while (commandQueue.length > 0 && !isHardStopped) {
-    const { text, feature, resolve } = commandQueue.shift();
+    const { text, feature, resolve, force } = commandQueue.shift();
+    
+    // Check cooldown unless forced
+    if (!force && isOnCooldown(text)) {
+      resolve(false);
+      continue; 
+    }
+
     const success = await apiSend(text, feature);
     resolve(success); 
     await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
@@ -28,10 +37,10 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
-export function enqueueCommand(text, feature = 'general') {
+export function enqueueCommand(text, feature = 'general', force = false) {
   if (isHardStopped) return Promise.resolve(false);
   return new Promise((resolve) => {
-    commandQueue.push({ text, feature, resolve });
+    commandQueue.push({ text, feature, resolve, force });
     processQueue();
   });
 }
@@ -139,12 +148,12 @@ async function apiSend(text, feature = 'general') {
   return false;
 }
 
-export async function sendDiscordMessage(text, feature = 'general') {
+export async function sendDiscordMessage(text, feature = 'general', force = false) {
   if (isHardStopped) return false;
-  return enqueueCommand(text, feature);
+  return enqueueCommand(text, feature, force);
 }
 
-// --- Smart Chat Scan (Returns object with type and trigger phrase) ---
+// --- Smart Chat Scan ---
 export function scanChat(newNode = null) {
   let messages = [];
 
@@ -182,7 +191,6 @@ export function scanChat(newNode = null) {
 
     if (!isBot && !isTrackedUser && !isOwO) continue;
 
-    // Helper to return clean trigger text
     const makeTrigger = (t) => t.length > 100 ? t.slice(0, 100) + '...' : t;
 
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
@@ -232,4 +240,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-  }
+}
