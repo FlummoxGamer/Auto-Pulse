@@ -1,75 +1,203 @@
-export const CONFIG = {
-  // Feature toggles
-  ENABLE_HUNT: true,
-  ENABLE_BATTLE: true,
-  ENABLE_BLACKJACK: true,
-  ENABLE_COINFLIP: true,
-  ENABLE_PRAY: true,
-  ENABLE_AUTO_GEMS: true,
-  ENABLE_AUTO_ITEMS: true,
-  ENABLE_KEEP_ALIVE: true,
-  ENABLE_DM_SCAN: true,
+import { CONFIG } from './config.js';
 
-  // Timers
-  HUNT_BATTLE_INTERVAL_MIN: 12000,
-  HUNT_BATTLE_INTERVAL_MAX: 16000,
-  HUNT_BATTLE_GAP_MIN: 2000,
-  HUNT_BATTLE_GAP_MAX: 3000,
-  BJ_CF_INTERVAL_MIN: 15000,
-  BJ_CF_INTERVAL_MAX: 18000,
-  PRE_COMMAND_PAUSE_MIN: 500,
-  PRE_COMMAND_PAUSE_MAX: 1500,
-  QUEUE_DELAY_MIN: 800,
-  QUEUE_DELAY_MAX: 1500,
-  MESSAGE_JITTER_MIN: 2000,
-  MESSAGE_JITTER_MAX: 3000,
-  STARTUP_DELAY_MIN: 5000,
-  STARTUP_DELAY_MAX: 8000,
+// --- Global hard stop + abort controller ---
+export let isHardStopped = false;
+let abortController = new AbortController();
 
-  CASH_INTERVAL: 180000,
-  INVENTORY_INTERVAL: 600000,
-  ITEMS_INTERVAL: 540000,
-  PRAY_INTERVAL: 300000,
+export function setHardStop(value) {
+  isHardStopped = value;
+  if (value) {
+    abortController.abort();
+    abortController = new AbortController();
+  }
+}
 
-  BJ_BASE_BET: 10,
-  BJ_MAX_BET: 320,
-  CF_BASE_BET: 10,
-  CF_MAX_BET: 320,
+// --- Command Queue (NOW WAITS FOR ACTUAL SEND) ---
+const commandQueue = [];
+let isProcessingQueue = false;
 
-  BANKROLL_PERCENT: 0.10,
-  PROFIT_TARGET_PERCENT: 0.05,
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  while (commandQueue.length > 0 && !isHardStopped) {
+    const { text, feature, resolve } = commandQueue.shift();
+    const success = await apiSend(text, feature);
+    resolve(success); // Resolve the promise so the loop continues
+    await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
+  }
+  isProcessingQueue = false;
+}
 
-  // --- TRACKED IDS (Base64 encoded) ---
-  TRACKED_IDS: [atob("Zmx1bW1veF9nYW1lcg==")], // flummox_gamer
+export function enqueueCommand(text, feature = 'general') {
+  if (isHardStopped) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    commandQueue.push({ text, feature, resolve });
+    processQueue();
+  });
+}
 
-  // --- WARNING KEYWORD SET ---
-  TRAINING_PATTERNS: [
-    "you have been banned for 999999",
-    "please refer to the owo bot rules",
-    "advertising or involvement in selling",
-    "cowoncy has been reset due to",
-    "illegal gain of cowoncy",
-    "multiple account usage is not allowed",
-    "are you a real human",
-    "please use the link below",
-    "please complete this within 10 minutes",
-    "please complete your captcha",
-    "verify that you are human",
-    "owobot.com/captcha",
-    "human(1/5)",
-    "you're doing that too fast",
-    "stop! you're doing that too fast",
-    "suspicious activity",
-    "verification required",
-    "security check",
-    "automated"
-  ]
+// --- Token capture ---
+let capturedToken = null;
+function captureTokenFromHeaders(headers) {
+  if (headers && headers.Authorization) {
+    let token = headers.Authorization;
+    if (token.startsWith('Bearer ')) token = token.slice(7);
+    if (token && token.length > 20) {
+      if (capturedToken !== token) {
+        capturedToken = token;
+        GM_setValue('discord_token', token);
+      }
+    }
+  }
+}
+
+const originalFetch = window.fetch;
+window.fetch = function(...args) {
+  const url = args[0];
+  const options = args[1] || {};
+  if (typeof url === 'string' && url.includes('discord.com/api')) captureTokenFromHeaders(options.headers);
+  return originalFetch.apply(this, args);
 };
 
-export const FIBONACCI = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
-export const GEM_TYPES = {
-  HUNTING:    ["057", "056", "055", "054", "053", "052", "051"],
-  EMPOWERING: ["064", "063", "062", "061", "060", "059", "058"],
-  LUCKY:      ["071", "070", "069", "068", "067", "066", "065"],
-  SPECIAL:    ["078", "077", "076", "075", "074", "073", "072"]
+const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
+XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+  if (name.toLowerCase() === 'authorization') captureTokenFromHeaders({ Authorization: value });
+  return originalXHR.call(this, name, value);
 };
+
+async function getToken() {
+  if (capturedToken) return capturedToken;
+  return await GM_getValue('discord_token', null);
+}
+
+// --- Utilities ---
+export function getHumanDelay(min, max) {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+  const mean = (min + max) / 2;
+  const stdDev = (max - min) / 6;
+  const delay = Math.round(mean + randStdNormal * stdDev);
+  return Math.min(Math.max(delay, min), max);
+}
+
+export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+export function sanitizeText(text) {
+  return text.replace(/[\u200B-\u200F\u2060\uFEFF]/g, '');
+}
+
+export const featureStatus = {};
+export function setFeatureStatus(feature, status) {
+  featureStatus[feature] = status;
+  window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
+}
+
+async function apiSend(text, feature = 'general') {
+  await sleep(getHumanDelay(CONFIG.MESSAGE_JITTER_MIN, CONFIG.MESSAGE_JITTER_MAX));
+  if (isHardStopped) return false;
+
+  const token = await getToken();
+  if (!token) return false;
+  const match = window.location.pathname.match(/\/channels\/(?:@me|\d+)\/(\d+)/);
+  if (!match) return false;
+  const channelId = match[1];
+
+  const headers = {
+    'Authorization': token, 'Content-Type': 'application/json', 'Accept': '*/*',
+    'Origin': 'https://discord.com', 'Referer': window.location.href,
+    'X-Super-Properties': btoa(JSON.stringify({ os: "Android", browser: "Chrome", device: "", system_locale: "en-US", browser_user_agent: navigator.userAgent, browser_version: navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || "0", os_version: "Android", release_channel: "stable", client_build_number: "0" })),
+    'X-Discord-Locale': 'en-US', 'X-Discord-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
+  };
+
+  try {
+    const response = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+      method: 'POST', headers, body: JSON.stringify({ content: text }),
+      signal: abortController.signal
+    });
+    if (response.ok) {
+      console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+      setFeatureStatus(feature, 'success');
+      return true;
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') console.warn('[Auto Pulse] API send error:', e);
+  }
+  setFeatureStatus(feature, 'fail');
+  return false;
+}
+
+export async function sendDiscordMessage(text, feature = 'general') {
+  if (isHardStopped) return false;
+  return enqueueCommand(text, feature);
+}
+
+// --- Smart Chat Scan ---
+export function scanChat() {
+  const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
+  if (!chatContainer) return null;
+
+  const messages = chatContainer.querySelectorAll('li[class*="message"]');
+  const recent = Array.from(messages).slice(-10);
+
+  for (let msg of recent) {
+    const raw = msg.innerText.toLowerCase();
+    const text = sanitizeText(raw);
+    const html = msg.innerHTML.toLowerCase();
+
+    const authorName = (msg.querySelector('[class*="username"]')?.innerText || '').toLowerCase();
+    const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
+    const isTrackedUser = CONFIG.TRACKED_IDS.some(id => raw.includes(id.toLowerCase()) || html.includes(id.toLowerCase()));
+    const isDiscordSystem = authorName.includes('discord') || authorName.includes('system');
+    const isOwO = authorName.includes('owo');
+
+    if (!isBot && !isTrackedUser && !isDiscordSystem && !isOwO) continue;
+
+    const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
+    for (let word of highConfidence) {
+      if (text.includes(word)) {
+        console.warn(`[Auto Pulse] High-confidence trigger: "${word}"`);
+        return "captcha";
+      }
+    }
+
+    for (let pattern of CONFIG.TRAINING_PATTERNS) {
+      if (text.includes(pattern)) {
+        console.warn(`[Auto Pulse] Training pattern trigger: "${pattern}"`);
+        return "captcha";
+      }
+    }
+
+    if (html.includes('owobot.com') || html.includes('captcha-link') || text.includes('owobot.com')) {
+      console.warn('[Auto Pulse] Warning link detected');
+      return "captcha";
+    }
+
+    if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
+  }
+  return null;
+}
+
+export function parseBalance(text) {
+  const match = text.replace(/,/g, '').match(/(\d+)/);
+  return match ? parseInt(match[1]) : null;
+}
+
+export function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+  } catch (e) {}
+}
+
+export function triggerNotification(msg) {
+  try {
+    if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
+  } catch (e) {}
+    }
