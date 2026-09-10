@@ -12,7 +12,7 @@ export function setHardStop(value) {
   }
 }
 
-// --- Command Queue (NOW WAITS FOR ACTUAL SEND) ---
+// --- Command Queue (Now waits for actual send) ---
 const commandQueue = [];
 let isProcessingQueue = false;
 
@@ -22,7 +22,7 @@ async function processQueue() {
   while (commandQueue.length > 0 && !isHardStopped) {
     const { text, feature, resolve } = commandQueue.shift();
     const success = await apiSend(text, feature);
-    resolve(success); // Resolve the promise so the loop continues
+    resolve(success); 
     await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
   }
   isProcessingQueue = false;
@@ -132,7 +132,6 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan ---
 export function scanChat() {
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
   if (!chatContainer) return null;
@@ -200,4 +199,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-    }
+                                         }
