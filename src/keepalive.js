@@ -1,4 +1,4 @@
-hereimport { CONFIG } from './config.js';
+import { CONFIG } from './config.js';
 
 // --- 1. Visibility Spoofing ---
 // Forces the browser to think the tab is always visible, even when you switch apps.
