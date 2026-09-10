@@ -1,4 +1,4 @@
-hereimport { CONFIG } from './config.js';
+import { CONFIG } from './config.js';
 
 // --- 1. Visibility Spoofing ---
 function enableVisibilitySpoof() {
