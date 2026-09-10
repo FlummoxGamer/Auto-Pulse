@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+hereimport { CONFIG } from './config.js';
 
 // --- Global hard stop + abort controller ---
 export let isHardStopped = false;
@@ -144,12 +144,11 @@ export async function sendDiscordMessage(text, feature = 'general') {
   return enqueueCommand(text, feature);
 }
 
-// --- Smart Chat Scan (Scans new node OR falls back to last 10 messages) ---
+// --- Smart Chat Scan (Returns object with type and trigger phrase) ---
 export function scanChat(newNode = null) {
   let messages = [];
 
   if (newNode) {
-    // If the observer passed us a new node, only scan that one
     if (newNode.nodeName === 'LI' || newNode.classList.contains('message')) {
       messages = [newNode];
     } else {
@@ -157,7 +156,6 @@ export function scanChat(newNode = null) {
       if (innerMsg) messages = [innerMsg];
     }
   } else {
-    // Fallback: scan the last 10 messages (used only for the initial startup check)
     const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
     if (!chatContainer) return null;
     messages = Array.from(chatContainer.querySelectorAll('li[class*="message"]')).slice(-10);
@@ -178,34 +176,36 @@ export function scanChat(newNode = null) {
     const isOwO = msg.innerHTML.toLowerCase().includes('owo');
 
     if (newNode) {
-      // Only log if it's a live scan to prevent console spam on startup
       console.log(`[Chat Scan] Author ID: "${authorId}" | Content: "${text}"`);
       console.log(`[Chat Scan] isBot: ${isBot}, isTrackedUser: ${isTrackedUser}, isOwO: ${isOwO}`);
     }
 
     if (!isBot && !isTrackedUser && !isOwO) continue;
 
+    // Helper to return clean trigger text
+    const makeTrigger = (t) => t.length > 100 ? t.slice(0, 100) + '...' : t;
+
     const highConfidence = ["human", "captcha", "banned", "security check", "verify", "automated"];
     for (let word of highConfidence) {
       if (text.includes(word)) {
         console.warn(`[Chat Scan] High-confidence trigger: "${word}"`);
-        return "captcha";
+        return { type: "captcha", trigger: makeTrigger(text) };
       }
     }
 
     for (let pattern of CONFIG.TRAINING_PATTERNS) {
       if (text.includes(pattern)) {
         console.warn(`[Chat Scan] Training pattern trigger: "${pattern}"`);
-        return "captcha";
+        return { type: "captcha", trigger: makeTrigger(text) };
       }
     }
 
     if (text.includes('owobot.com')) {
       console.warn('[Chat Scan] Warning link detected');
-      return "captcha";
+      return { type: "captcha", trigger: makeTrigger(text) };
     }
 
-    if (text.includes("on cooldown") || text.includes("cooldown")) return "cooldown";
+    if (text.includes("on cooldown") || text.includes("cooldown")) return { type: "cooldown" };
   }
   return null;
 }
@@ -232,4 +232,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-}
+        }
