@@ -20,9 +20,13 @@ let observer = null;
 function startObserver() {
   if (observer) observer.disconnect();
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) return;
+  if (!chatContainer) {
+    console.log('[Auto Pulse Debug] Observer: Chat container not found.');
+    return;
+  }
   observer = new MutationObserver(() => {
-    if (!botStarted) return;
+    if (!botStarted || isHardStopped) return;
+    console.log('[Auto Pulse Debug] Observer triggered, scanning chat...');
     const scan = scanChat();
     if (scan === 'captcha') {
       console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
@@ -32,6 +36,7 @@ function startObserver() {
     }
   });
   observer.observe(chatContainer, { childList: true, subtree: true, characterData: true });
+  console.log('[Auto Pulse Debug] Observer started.');
 }
 
 function stopObserver() {
