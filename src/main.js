@@ -3,6 +3,7 @@ import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playN
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
 import { bankroll } from './systems/bankroll.js';
+import { autoGems, resetGems, detectGemExpiry, markExpired } from './systems/autoGems.js';
 
 let botStarted = false;
 let isStartupRunning = false;
@@ -13,80 +14,63 @@ let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
-// --- Observer (Real-time scan of new messages) ---
+// --- Observer ---
 let observer = null;
 
 function startObserver() {
   if (observer) observer.disconnect();
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) {
-    console.log('[Auto Pulse Debug] Observer: Chat container not found.');
-    return;
-  }
-  
+  if (!chatContainer) { console.log('[Auto Pulse] Observer: container not found.'); return; }
+
   observer = new MutationObserver((mutations) => {
     if (!botStarted || isHardStopped) return;
-    
+
     for (let mutation of mutations) {
       for (let node of mutation.addedNodes) {
-        if (node.nodeType === 1) {
-          const scan = scanChat(node); 
-          if (scan && scan.type === 'captcha') {
-            console.error('[Auto Pulse] CAPTCHA DETECTED (real-time)! Hard stopping.');
-            playNotificationSound();
-            triggerNotification(`Captcha detected! Bot stopped.\nTrigger: "${scan.trigger}"`);
-            stopBot();
-            return;
+        if (node.nodeType !== 1) continue;
+
+        const scan = scanChat(node);
+
+        if (scan && scan.type === 'captcha') {
+          console.error('[Auto Pulse] CAPTCHA DETECTED! Hard stopping.');
+          playNotificationSound();
+          triggerNotification(`Captcha detected! Bot stopped.\nTrigger: "${scan.trigger}"`);
+          stopBot();
+          return;
+        }
+
+        // Gem expiry detection
+        if (CONFIG.ENABLE_AUTO_GEMS) {
+          const expiryCats = detectGemExpiry(node.innerText || '');
+          if (expiryCats) {
+            console.log('[AutoGems] Expiry detected, triggering check.');
+            markExpired(expiryCats);
+            autoGems();
           }
         }
       }
     }
   });
-  
+
   observer.observe(chatContainer, { childList: true, subtree: true });
-  console.log('[Auto Pulse Debug] Optimized Observer started.');
+  console.log('[Auto Pulse] Observer started.');
 }
 
-function stopObserver() {
-  if (observer) { observer.disconnect(); observer = null; }
-}
-
-// --- Auto Gems ---
-async function autoGems() {
-  await sendDiscordMessage('owo inv', 'autoGems');
-  await sleep(4000);
-  const chat = document.querySelector('ol[class*="scroller"]');
-  const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
-  const lastMsg = msgs[msgs.length - 1];
-  const invText = lastMsg ? lastMsg.innerText : '';
-  const ownedGemIds = new Set();
-  const gemRegex = /(\d{3})\s*(?:\[|x)?\s*(\d+)/g;
-  let match;
-  while ((match = gemRegex.exec(invText)) !== null) ownedGemIds.add(match[1]);
-  for (const [category, ids] of Object.entries(GEM_TYPES)) {
-    for (const id of ids) {
-      if (ownedGemIds.has(id)) {
-        await sendDiscordMessage(`owo use ${id}`, 'autoGems');
-        await sleep(getHumanDelay(2000, 3200));
-        break;
-      }
-    }
-  }
-}
+function stopObserver() { if (observer) { observer.disconnect(); observer = null; } }
 
 // --- Startup Sequence ---
 async function runStartupCommands() {
   isStartupRunning = true;
-  const commands = ['owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
+  const commands = ['owo lb all', 'owo wc all', 'owo pray'];
   for (const cmd of commands) {
     if (!botStarted || isHardStopped) return;
-    await sendDiscordMessage(cmd, 'startup', true); // Force bypass cooldown
+    await sendDiscordMessage(cmd, 'startup', true);
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
 }
 
-// --- Main Loops ---
+// --- Hunt/Battle Loop ---
 async function huntBattleLoop() {
   if (!botStarted || isStartupRunning || isHardStopped) {
     if (botStarted && !isHardStopped) huntTimer = setTimeout(huntBattleLoop, 3000);
@@ -95,14 +79,12 @@ async function huntBattleLoop() {
   await sendDiscordMessage('owo h', 'hunt');
   await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
   await sendDiscordMessage('owo b', 'battle');
-  
   cycleCounter++;
 
   if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
     await sendDiscordMessage('owo pray', 'pray');
     lastPrayTime = Date.now();
   }
-  if (CONFIG.ENABLE_AUTO_GEMS && cycleCounter % 20 === 0) await autoGems();
   if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
     await sendDiscordMessage('owo lb all', 'autoItems');
     await sleep(getHumanDelay(2500, 4000));
@@ -111,46 +93,44 @@ async function huntBattleLoop() {
   huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
 
+// --- Gamble Loop ---
 async function gambleLoop() {
   if (!botStarted || isStartupRunning || isHardStopped) {
     if (botStarted && !isHardStopped) gambleTimer = setTimeout(gambleLoop, 3000);
     return;
   }
-  
-  // Blackjack removed, only Coinflip remains
-  if (CONFIG.ENABLE_COINFLIP) {
-    await playCoinflip();
-  }
-  
-  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.CF_INTERVAL_MIN, CONFIG.BJ_CF_INTERVAL_MAX));
+  if (CONFIG.ENABLE_COINFLIP) await playCoinflip();
+  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.CF_INTERVAL_MIN, CONFIG.CF_INTERVAL_MAX));
 }
 
-// --- Start / Stop Controls ---
+// --- Start / Stop ---
 async function startBot() {
   if (botStarted) return;
-  
-  console.log('[Auto Pulse Debug] Running startup safety scan...');
-  const startupScan = scanChat(); 
+
+  console.log('[Auto Pulse] Running startup safety scan...');
+  const startupScan = scanChat();
   if (startupScan && startupScan.type === 'captcha') {
-    console.error('[Auto Pulse] CAPTCHA DETECTED during startup scan! Aborting start.');
+    console.error('[Auto Pulse] CAPTCHA in recent chat! Aborting start.');
     playNotificationSound();
-    triggerNotification(`Warning found in recent chat! Bot aborted.\nTrigger: "${startupScan.trigger}"`);
+    triggerNotification(`Warning in recent chat! Aborted.\nTrigger: "${startupScan.trigger}"`);
     return;
   }
 
   botStarted = true;
-  setHardStop(false); 
+  setHardStop(false);
   updateStartStopButton();
-  
-  startKeepAlive(); // Uses the new engine
-  startObserver(); 
-  
-  await bankroll.init(); 
+  resetGems();
+  startKeepAlive();
+  startObserver();
+
+  await bankroll.init();
   lastPrayTime = Date.now();
-  
-  await runStartupCommands(); 
-  
-  huntBattleLoop(); 
+  await runStartupCommands();
+
+  // Startup settle delay (5s) - lets pending timers flush
+  await sleep(5000);
+
+  huntBattleLoop();
   gambleLoop();
 }
 
@@ -159,7 +139,7 @@ function stopBot() {
   isStartupRunning = false;
   setHardStop(true);
   updateStartStopButton();
-  stopKeepAlive(); // Uses the new engine
+  stopKeepAlive();
   stopObserver();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
@@ -176,11 +156,10 @@ function updateStatusDots() {
   for (const [feature, dot] of Object.entries(statusDots)) {
     const status = featureStatus[feature] || 'idle';
     dot.style.background = status === 'success' ? '#2ecc71' : status === 'fail' ? '#e74c3c' : '#95a5a6';
-    dot.title = `${feature}: ${status}`;
   }
 }
 
-// --- UI Creation (Blackjack removed) ---
+// --- UI ---
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
@@ -198,12 +177,11 @@ function createUI() {
   startStopBtn.addEventListener('click', () => { if (!botStarted) startBot(); else stopBot(); });
   panel.appendChild(startStopBtn);
 
-  // Blackjack is completely removed from the UI
   const toggles = [
     { label: 'Hunt', key: 'ENABLE_HUNT' }, { label: 'Battle', key: 'ENABLE_BATTLE' },
-    { label: 'Coinflip', key: 'ENABLE_COINFLIP' },
-    { label: 'Pray', key: 'ENABLE_PRAY' }, { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' },
-    { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' }, { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
+    { label: 'Coinflip', key: 'ENABLE_COINFLIP' }, { label: 'Pray', key: 'ENABLE_PRAY' },
+    { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' }, { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' },
+    { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
   ];
 
   toggles.forEach(t => {
@@ -211,7 +189,6 @@ function createUI() {
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
     const dot = document.createElement('span');
     dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#95a5a6;display:inline-block;margin-right:5px;';
-    dot.title = 'idle';
     statusDots[t.key] = dot;
     const label = document.createElement('span');
     label.textContent = t.label;
@@ -221,9 +198,7 @@ function createUI() {
     checkbox.checked = CONFIG[t.key];
     checkbox.addEventListener('change', () => {
       CONFIG[t.key] = checkbox.checked;
-      if (t.key === 'ENABLE_KEEP_ALIVE') { 
-        if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); 
-      }
+      if (t.key === 'ENABLE_KEEP_ALIVE') { if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); }
     });
     row.appendChild(dot); row.appendChild(label); row.appendChild(checkbox); panel.appendChild(row);
   });
