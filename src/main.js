@@ -1,9 +1,9 @@
-import { CONFIG, GEM_TYPES } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, sanitizeText, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './core/utils.js';
+import { CONFIG } from './core/config.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './core/utils.js';
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
 import { bankroll } from './systems/bankroll.js';
-import { autoGems, resetGems, detectGemExpiry, markExpired } from './systems/autoGems.js';
+import { triggerAutoGems, resetGems } from './systems/autoGems.js';
 
 let botStarted = false;
 let isStartupRunning = false;
@@ -14,13 +14,12 @@ let lastPrayTime = 0;
 let startStopBtn = null;
 const statusDots = {};
 
-// --- Observer ---
 let observer = null;
 
 function startObserver() {
   if (observer) observer.disconnect();
   const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) { console.log('[Auto Pulse] Observer: container not found.'); return; }
+  if (!chatContainer) return;
 
   observer = new MutationObserver((mutations) => {
     if (!botStarted || isHardStopped) return;
@@ -30,7 +29,6 @@ function startObserver() {
         if (node.nodeType !== 1) continue;
 
         const scan = scanChat(node);
-
         if (scan && scan.type === 'captcha') {
           console.error('[Auto Pulse] CAPTCHA DETECTED! Hard stopping.');
           playNotificationSound();
@@ -39,13 +37,12 @@ function startObserver() {
           return;
         }
 
-        // Gem expiry detection
+        // Auto Gems detection: look for owo h reply containing gem info
         if (CONFIG.ENABLE_AUTO_GEMS) {
-          const expiryCats = detectGemExpiry(node.innerText || '');
-          if (expiryCats) {
-            console.log('[AutoGems] Expiry detected, triggering check.');
-            markExpired(expiryCats);
-            autoGems();
+          const html = node.innerHTML || '';
+          // Trigger if we see gem keywords or charge counters like [123/450]
+          if (/gem/i.test(html) || /\[\d+\/\d+\]/.test(html)) {
+            triggerAutoGems(html);
           }
         }
       }
@@ -58,7 +55,6 @@ function startObserver() {
 
 function stopObserver() { if (observer) { observer.disconnect(); observer = null; } }
 
-// --- Startup Sequence ---
 async function runStartupCommands() {
   isStartupRunning = true;
   const commands = ['owo lb all', 'owo wc all', 'owo pray'];
@@ -70,7 +66,6 @@ async function runStartupCommands() {
   isStartupRunning = false;
 }
 
-// --- Hunt/Battle Loop ---
 async function huntBattleLoop() {
   if (!botStarted || isStartupRunning || isHardStopped) {
     if (botStarted && !isHardStopped) huntTimer = setTimeout(huntBattleLoop, 3000);
@@ -93,7 +88,6 @@ async function huntBattleLoop() {
   huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
 
-// --- Gamble Loop ---
 async function gambleLoop() {
   if (!botStarted || isStartupRunning || isHardStopped) {
     if (botStarted && !isHardStopped) gambleTimer = setTimeout(gambleLoop, 3000);
@@ -103,7 +97,6 @@ async function gambleLoop() {
   gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.CF_INTERVAL_MIN, CONFIG.CF_INTERVAL_MAX));
 }
 
-// --- Start / Stop ---
 async function startBot() {
   if (botStarted) return;
 
@@ -126,9 +119,7 @@ async function startBot() {
   await bankroll.init();
   lastPrayTime = Date.now();
   await runStartupCommands();
-
-  // Startup settle delay (5s) - lets pending timers flush
-  await sleep(5000);
+  await sleep(5000); // Startup settle delay
 
   huntBattleLoop();
   gambleLoop();
@@ -159,7 +150,6 @@ function updateStatusDots() {
   }
 }
 
-// --- UI ---
 function createUI() {
   const btn = document.createElement('div');
   btn.id = 'ap-ui-btn';
