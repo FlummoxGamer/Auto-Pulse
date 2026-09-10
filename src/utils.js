@@ -151,7 +151,8 @@ export function scanChat() {
 
     // Layer 1: Author Filter (only bots, Discord, or tracked users)
     const authorName = (msg.querySelector('[class*="username"]')?.innerText || '').toLowerCase();
-    const isBot = html.includes('bot') || html.includes('app');
+    // FIXED: Uses Discord's actual bot tag element instead of loose keywords
+    const isBot = msg.querySelector('[class*="botTag"]') !== null || msg.innerHTML.includes('botTag');
     const isTrackedUser = CONFIG.TRACKED_IDS.some(id => authorName.includes(id.toLowerCase()));
     const isDiscordSystem = authorName.includes('discord') || authorName.includes('system');
     const isOwO = authorName.includes('owo');
@@ -208,4 +209,4 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-  }
+                           }
