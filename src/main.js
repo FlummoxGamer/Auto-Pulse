@@ -80,7 +80,7 @@ async function runStartupCommands() {
   const commands = ['owo inv', 'owo lb all', 'owo wc all', 'owo pray'];
   for (const cmd of commands) {
     if (!botStarted || isHardStopped) return;
-    await sendDiscordMessage(cmd, 'startup');
+    await sendDiscordMessage(cmd, 'startup' true);   // force bypass cooldown
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
