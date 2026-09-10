@@ -37,12 +37,11 @@ function startObserver() {
           return;
         }
 
-        // Auto Gems detection: look for owo h reply containing gem info
-        if (CONFIG.ENABLE_AUTO_GEMS) {
-          const html = node.innerHTML || '';
-          // Trigger if we see gem keywords or charge counters like [123/450]
-          if (/gem/i.test(html) || /\[\d+\/\d+\]/.test(html)) {
-            triggerAutoGems(html);
+           // Auto Gems detection: only trigger on OwO hunt replies
+           if (CONFIG.ENABLE_AUTO_GEMS) {
+           const innerText = node.innerText || '';
+           if (/hunt is empowered/i.test(innerText)) {
+           triggerAutoGems(node.innerHTML);
           }
         }
       }
