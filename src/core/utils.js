@@ -240,10 +240,6 @@ export function triggerNotification(msg) {
     if (typeof GM_notification !== 'undefined') { GM_notification({ title: "Auto Pulse", text: msg }); return; }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
-window.dispatchEvent(new CustomEvent('ap-log', { detail: { msg, type } }));
-window.dispatchEvent(new CustomEvent('ap-tracker', { detail: { hunt, battle, cfWin, cfTotal, owo } }));
-window.dispatchEvent(new CustomEvent('ap-runtime', { detail: { seconds } }));
-window.dispatchEvent(new CustomEvent('ap-status', { detail: { percent, state } }));
 }
 // --- Event bus helpers for UI ---
 export function emitLog(msg, type = 'info') {
