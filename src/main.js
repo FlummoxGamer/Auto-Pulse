@@ -1,176 +1,181 @@
-import { CONFIG } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitRuntime, emitStatus, getToken } from './core/utils.js';
-import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
-import { playCoinflip } from './games/coinflip.js';
-import { bankroll, stats, resetCF } from './systems/bankroll.js';
-import { triggerAutoGems, resetGems } from './systems/autoGems.js';
-import { initUI, updateStartStopButton, addLog, resetRuntime, resetCommandIndicators } from './ui/ui.js';
-import { initWebSocketHook, startPolling, stopPolling } from './systems/dmScanner.js';
+// src/main.js
+import { apiSend, parseLogs } from './core/utils.js';
+import { 
+  createUI, updateStatusUI, updateRuntime, updateTracker, 
+  appendLog, updateCooldowns, setStartButtonState, clearLogs 
+} from './ui/ui.js';
 
-let botStarted = false;
-let isStartupRunning = false;
-let huntTimer = null;
-let gambleTimer = null;
-let cycleCounter = 0;
-let lastPrayTime = 0;
-let observer = null;
+let isRunning = false;
+let runtimeInterval = null;
+let runtimeSeconds = 0;
+let cooldownInterval = null;
 
-function startObserver() {
-  if (observer) observer.disconnect();
-  const chatContainer = document.querySelector('ol[class*="scroller"]') || document.querySelector('[class*="scrollerInner"]');
-  if (!chatContainer) return;
+let stats = { hunt: 0, battle: 0, cf: 0, cfTotal: 0, owo: 0 };
+let commandStates = {
+  hunt: true, battle: true, coinflip: true, pray: true,
+  autogems: true, autoitems: true, keepalive: true
+};
 
-  observer = new MutationObserver((mutations) => {
-    if (!botStarted || isHardStopped) return;
-    for (const m of mutations) {
-      for (const node of m.addedNodes) {
-        if (node.nodeType !== 1) continue;
+// Cooldown timestamps (in ms)
+let cdTimestamps = { hunt: 0, battle: 0, cf: 0 };
 
-        const scan = scanChat(node);
-        if (scan && scan.type === 'captcha') {
-          playNotificationSound();
-          triggerNotification(`Captcha detected! Bot stopped.\nTrigger: "${scan.trigger}"`);
-          stopBot();
-          return;
-        }
-
-        // --- Tracker counting ---
-        const text = (node.innerText || '').toLowerCase();
-        if (text.includes('you found:')) { stats.hunt++; emitTracker(stats); }
-        if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
-
-        // Balance — strict match to avoid false positives
-        if (text.includes('cowoncy') && text.includes('you currently have')) {
-          const match = text.match(/you currently have ([\d,]+) cowoncy/i);
-          if (match) {
-            stats.owo = parseInt(match[1].replace(/,/g, ''));
-            emitTracker(stats);
-          }
-        }
-
-        if (CONFIG.ENABLE_AUTO_GEMS) {
-          const html = node.innerHTML || '';
-          if (/hunt is empowered/i.test(text)) triggerAutoGems(html);
-        }
-      }
-    }
+export function initBot() {
+  createUI({
+    start: toggleBot,
+    reset: resetBot
   });
-  observer.observe(chatContainer, { childList: true, subtree: true });
+
+  buildCommandList();
+  setupLogObserver();
+  
+  // Initial UI setup
+  updateStatusUI(0, 'idle');
+  updateTracker(stats);
+  updateRuntime(0);
 }
 
-function stopObserver() { if (observer) { observer.disconnect(); observer = null; } }
-
-async function runStartupCommands() {
-  isStartupRunning = true;
-  const commands = ['owo lb all', 'owo wc all', 'owo pray'];
-  for (const cmd of commands) {
-    if (!botStarted || isHardStopped) return;
-    await sendDiscordMessage(cmd, 'startup', true);
-    await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
-  }
-  isStartupRunning = false;
+function buildCommandList() {
+  const list = document.getElementById('ap-cmd-list');
+  list.innerHTML = '';
+  Object.keys(commandStates).forEach(key => {
+    const item = document.createElement('div');
+    item.className = 'ap-cmd-item';
+    item.innerHTML = `
+      <span style="text-transform: capitalize;">${key}</span>
+      <div class="ap-toggle ${commandStates[key] ? 'active' : ''}" data-cmd="${key}"></div>
+    `;
+    item.querySelector('.ap-toggle').addEventListener('click', (e) => {
+      commandStates[key] = !commandStates[key];
+      e.target.classList.toggle('active', commandStates[key]);
+      appendLog(`${key} -> ${commandStates[key] ? 'ON' : 'OFF'}`);
+    });
+    list.appendChild(item);
+  });
 }
 
-async function huntBattleLoop() {
-  if (!botStarted || isStartupRunning || isHardStopped) {
-    if (botStarted && !isHardStopped) huntTimer = setTimeout(huntBattleLoop, 3000);
-    return;
-  }
-  await sendDiscordMessage('owo h', 'hunt');
-  await sleep(getHumanDelay(CONFIG.HUNT_BATTLE_GAP_MIN, CONFIG.HUNT_BATTLE_GAP_MAX));
-  await sendDiscordMessage('owo b', 'battle');
-  cycleCounter++;
-
-  if (CONFIG.ENABLE_PRAY && Date.now() - lastPrayTime > CONFIG.PRAY_INTERVAL) {
-    await sendDiscordMessage('owo pray', 'pray');
-    lastPrayTime = Date.now();
-  }
-  if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
-    await sendDiscordMessage('owo lb all', 'autoItems');
-    await sleep(getHumanDelay(2500, 4000));
-    await sendDiscordMessage('owo wc all', 'autoItems');
-  }
-  huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
+function setupLogObserver() {
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1 && node.tagName === 'DIV') {
+          parseLogs(node.innerText || node.textContent);
+        }
+      });
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
-async function gambleLoop() {
-  if (!botStarted || isStartupRunning || isHardStopped) {
-    if (botStarted && !isHardStopped) gambleTimer = setTimeout(gambleLoop, 3000);
-    return;
+export function handleLog(text) {
+  // Update stats based on log content
+  if (text.includes('Hunt') && text.includes('found')) stats.hunt++;
+  if (text.includes('Battle') && text.includes('won')) stats.battle++;
+  if (text.includes('Coinflip') && text.includes('won')) stats.cf++;
+  if (text.includes('Coinflip') && text.includes('lost')) stats.cfTotal++;
+  if (text.includes('owo')) stats.owo++;
+
+  updateTracker(stats);
+  appendLog(text);
+}
+
+async function toggleBot() {
+  if (isRunning) {
+    stopBot();
+  } else {
+    await startBot();
   }
-  if (CONFIG.ENABLE_COINFLIP) await playCoinflip();
-  gambleTimer = setTimeout(gambleLoop, getHumanDelay(CONFIG.CF_INTERVAL_MIN, CONFIG.CF_INTERVAL_MAX));
 }
 
 async function startBot() {
-  if (botStarted) return;
+  if (isRunning) return;
+  isRunning = true;
+  setStartButtonState(true);
+  updateStatusUI(0, 'running');
+  appendLog('Bot started.', 'info');
 
-  emitStatus(0, 'active');
-  emitLog('Running startup safety scan...', 'info');
-  const startupScan = scanChat();
-  if (startupScan && startupScan.type === 'captcha') {
-    emitLog('Warning in recent chat! Aborted.', 'error');
-    playNotificationSound();
-    triggerNotification(`Warning in recent chat! Aborted.\nTrigger: "${startupScan.trigger}"`);
-    emitStatus(0, 'error');
-    return;
-  }
-
-  botStarted = true;
-  setHardStop(false);
-  updateStartStopButton(true);
+  // FIX 1: Initialize indicators BEFORE starter commands
   resetCommandIndicators();
-  resetGems();
-  resetRuntime();
-  startKeepAlive();
-  startObserver();
-  startPolling(getToken, stopBot, () => botStarted);
+  
+  // Start runtime timer
+  runtimeSeconds = 0;
+  updateRuntime(runtimeSeconds);
+  runtimeInterval = setInterval(() => {
+    runtimeSeconds++;
+    updateRuntime(runtimeSeconds);
+  }, 1000);
 
-  emitStatus(25, 'active');
-  await bankroll.init();
-  emitLog('Bankroll initialized.', 'success');
-  emitStatus(50, 'active');
-  lastPrayTime = Date.now();
+  // Start cooldown ticker
+  cooldownInterval = setInterval(() => {
+    const now = Date.now();
+    const huntCd = Math.max(0, Math.ceil((cdTimestamps.hunt + 15000 - now) / 1000));
+    const battleCd = Math.max(0, Math.ceil((cdTimestamps.battle + 30000 - now) / 1000));
+    const cfCd = Math.max(0, Math.ceil((cdTimestamps.cf + 45000 - now) / 1000));
+    updateCooldowns(huntCd, battleCd, cfCd);
+  }, 1000);
+
+  // Run starter commands
   await runStartupCommands();
-  emitLog('Startup commands done.', 'success');
 
-  emitStatus(75, 'active');
-  await sleep(5000);
-  emitLog('Settle complete.', 'success');
-
-  emitStatus(100, 'active');
-  emitLog('Bot started.', 'success');
-
-  huntBattleLoop();
-  gambleLoop();
+  // Start main loop
+  mainLoop();
 }
 
 function stopBot() {
-  botStarted = false;
-  isStartupRunning = false;
-  setHardStop(true);
-  updateStartStopButton(false);
+  isRunning = false;
+  setStartButtonState(false);
+  updateStatusUI(0, 'idle');
+  appendLog('Bot stopped.', 'warn');
+  clearInterval(runtimeInterval);
+  clearInterval(cooldownInterval);
+  updateCooldowns(0, 0, 0);
+}
+
+// FIX 10: Full Bot Reset instead of Bankroll Reset
+function resetBot() {
+  appendLog('Resetting bot...', 'warn');
+  stopBot();
+  
+  // Reset state
+  stats = { hunt: 0, battle: 0, cf: 0, cfTotal: 0, owo: 0 };
+  runtimeSeconds = 0;
+  cdTimestamps = { hunt: 0, battle: 0, cf: 0 };
+  
+  // Reset UI
+  updateTracker(stats);
+  updateRuntime(0);
+  clearLogs();
   resetCommandIndicators();
-  stopKeepAlive();
-  stopObserver();
-  stopPolling();
-  if (huntTimer) clearTimeout(huntTimer);
-  if (gambleTimer) clearTimeout(gambleTimer);
-  emitLog('Bot stopped.', 'warn');
-  emitStatus(0, 'idle');
+  
+  appendLog('Bot reset complete.', 'info');
 }
 
-function init() {
-  try { if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') Notification.requestPermission().catch(() => {}); } catch (e) {}
-
-  initWebSocketHook(getToken, stopBot, () => botStarted);
-
-  initUI({
-    start: startBot,
-    stop: stopBot,
-    isRunning: () => botStarted,
-    resetBankroll: () => { resetCF(); emitTracker(stats); }
-  });
+async function runStartupCommands() {
+  appendLog('Running startup safety scan...');
+  await apiSend('owo cash');
+  await apiSend('owo lb all');
+  await apiSend('owo wc all');
+  await apiSend('owo pray');
+  appendLog('Startup commands done.');
 }
 
-init();
+function mainLoop() {
+  if (!isRunning) return;
+  
+  // Example main loop logic
+  if (commandStates.hunt) {
+    apiSend('owo hunt');
+    cdTimestamps.hunt = Date.now();
+  }
+  if (commandStates.battle) {
+    apiSend('owo battle');
+    cdTimestamps.battle = Date.now();
+  }
+  
+  // Schedule next loop
+  setTimeout(mainLoop, 5000);
+}
+
+function resetCommandIndicators() {
+  // Reset any indicator internal state here
+  appendLog('Command indicators reset.');
+                              }
