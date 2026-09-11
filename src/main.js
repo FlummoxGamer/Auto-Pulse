@@ -1,11 +1,10 @@
 import { CONFIG } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitRuntime, emitStatus } from './core/utils.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitRuntime, emitStatus, getToken } from './core/utils.js';
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
 import { bankroll, stats, resetCF } from './systems/bankroll.js';
 import { triggerAutoGems, resetGems } from './systems/autoGems.js';
-import { initUI, updateStartStopButton, addLog, resetRuntime } from './ui/ui.js';
-import { getToken } from './core/utils.js';
+import { initUI, updateStartStopButton, addLog, resetRuntime, resetCommandIndicators } from './ui/ui.js';
 import { initWebSocketHook, startPolling, stopPolling } from './systems/dmScanner.js';
 
 let botStarted = false;
@@ -39,15 +38,15 @@ function startObserver() {
         const text = (node.innerText || '').toLowerCase();
         if (text.includes('you found:')) { stats.hunt++; emitTracker(stats); }
         if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
-        
+
+        // Balance — strict match to avoid false positives
         if (text.includes('cowoncy') && text.includes('you currently have')) {
-  const match = text.match(/you currently have ([\d,]+) cowoncy/i);
-  if (match) {
-    stats.owo = parseInt(match[1].replace(/,/g, ''));
-    emitTracker(stats);
-  }
+          const match = text.match(/you currently have ([\d,]+) cowoncy/i);
+          if (match) {
+            stats.owo = parseInt(match[1].replace(/,/g, ''));
+            emitTracker(stats);
+          }
         }
-      }
 
         if (CONFIG.ENABLE_AUTO_GEMS) {
           const html = node.innerHTML || '';
@@ -55,7 +54,7 @@ function startObserver() {
         }
       }
     }
-  );
+  });
   observer.observe(chatContainer, { childList: true, subtree: true });
 }
 
@@ -120,6 +119,7 @@ async function startBot() {
   botStarted = true;
   setHardStop(false);
   updateStartStopButton(true);
+  resetCommandIndicators();
   resetGems();
   resetRuntime();
   startKeepAlive();
@@ -150,6 +150,7 @@ function stopBot() {
   isStartupRunning = false;
   setHardStop(true);
   updateStartStopButton(false);
+  resetCommandIndicators();
   stopKeepAlive();
   stopObserver();
   stopPolling();
@@ -171,4 +172,5 @@ function init() {
     resetBankroll: () => { resetCF(); emitTracker(stats); }
   });
 }
+
 init();
