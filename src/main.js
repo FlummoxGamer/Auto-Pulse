@@ -127,6 +127,7 @@ async function startBot() {
   resetRuntime();
   startKeepAlive();
   startObserver();
+  startPolling(getToken, stopBot);
 
   emitStatus(25, 'active');
   await bankroll.init();
@@ -154,6 +155,7 @@ function stopBot() {
   updateStartStopButton(false);
   stopKeepAlive();
   stopObserver();
+  stopPolling();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
   emitLog('Bot stopped.', 'warn');
