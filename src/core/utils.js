@@ -87,7 +87,7 @@ XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
 };
 
   export async function getToken() {
-  if (captasyntoken) return capturedToken;
+  if (capturedtoken) return capturedToken;
   return await GM_getValue('discord_token', null);
 }
 
