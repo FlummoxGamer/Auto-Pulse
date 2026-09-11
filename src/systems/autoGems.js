@@ -2,8 +2,9 @@ import { sendDiscordMessage, sleep, getHumanDelay } from '../core/utils.js';
 
 const RARITY_PREFIX = { 'c': 1, 'u': 2, 'r': 3, 'e': 4, 'm': 5, 'l': 6, 'f': 7 };
 
-// CORRECTED: Based on actual data
-const CATEGORY_SUFFIX = { '1': 'HUNTING', '2': 'EMPOWERING', '3': 'LUCKY', '4': 'SPECIAL' };
+// CORRECT mapping based on your data:
+// 1 = HUNTING, 3 = EMPOWERING, 4 = LUCKY, (empty) = SPECIAL
+const CATEGORY_SUFFIX = { '1': 'HUNTING', '3': 'EMPOWERING', '4': 'LUCKY', '': 'SPECIAL' };
 
 let lastAutoGemsRun = 0;
 let inventoryCache = null;
@@ -17,32 +18,11 @@ export function resetGems() {
   console.log('[AutoGems] State reset.');
 }
 
-// Parse gems from inventory HTML (format: <id> <emoji> <qty>)
-function parseInventory(html) {
-  const gems = [];
-  // Match a 3-digit ID followed by an <img> with gem in alt
-  const regex = /(\d{3})\s*<img[^>]*?alt="([^"]*?gem[^"]*?)"[^>]*?>/gi;
-  let m;
-  while ((m = regex.exec(html)) !== null) {
-    const id = m[1];
-    const alt = m[2];
-    const nameMatch = alt.match(/([curemlf])gem([1234]?)(?=[^a-z0-9]|$)/i);
-    if (!nameMatch) continue;
-    const prefix = nameMatch[1].toLowerCase();
-    const suffix = nameMatch[2] || '';
-    const category = CATEGORY_SUFFIX[suffix];
-    const tier = RARITY_PREFIX[prefix];
-    if (!category || !tier) continue;
-    gems.push({ id, alt, prefix, suffix, category, tier });
-    console.log(`[AutoGems Debug] INV: ${id} = ${alt} (${category}, tier ${tier})`);
-  }
-  return gems;
-}
-
-// Parse equipped gem categories from hunt reply HTML
+// Parse equipped from hunt reply HTML
 function parseHuntReply(html) {
   const equipped = { HUNTING: false, EMPOWERING: false, LUCKY: false, SPECIAL: false };
-  const regex = /alt="([curemlf])gem([1234]?)"/gi;
+  // Match :XgemN: or :Xgem: (with optional colons)
+  const regex = /alt=":?([curemlf])gem([134]?):?"/gi;
   let m;
   while ((m = regex.exec(html)) !== null) {
     const prefix = m[1].toLowerCase();
@@ -50,8 +30,8 @@ function parseHuntReply(html) {
     const category = CATEGORY_SUFFIX[suffix];
     if (!category) continue;
 
-    // Look 50 chars forward for a "[0/" pattern (depleted)
-    const after = html.slice(m.index, m.index + 50);
+    // Look 50 chars forward for [0/ to detect depleted
+    const after = html.slice(m.index, m.index + 80);
     if (!/\[0\//.test(after)) {
       equipped[category] = true;
       console.log(`[AutoGems Debug] HUNT: ${m[1]}gem${suffix} → ${category} equipped`);
@@ -62,10 +42,28 @@ function parseHuntReply(html) {
   return equipped;
 }
 
+// Parse inventory HTML for gems (format: "052 <img alt=":cgem1:"> 1")
+function parseInventory(html) {
+  const gems = [];
+  // Match optional space + 3-digit ID + optional space + <img with gem alt>
+  const regex = /(\d{3})\s*<img[^>]*?alt=":?([curemlf])gem([134]?):?"[^>]*?>/gi;
+  let m;
+  while ((m = regex.exec(html)) !== null) {
+    const id = m[1];
+    const prefix = m[2].toLowerCase();
+    const suffix = m[3] || '';
+    const category = CATEGORY_SUFFIX[suffix];
+    const tier = RARITY_PREFIX[prefix];
+    if (!category || !tier) continue;
+    gems.push({ id, prefix, suffix, category, tier });
+    console.log(`[AutoGems Debug] INV: ${id} = ${prefix}gem${suffix} (${category}, tier ${tier})`);
+  }
+  return gems;
+}
+
 export async function triggerAutoGems(huntHtml) {
   if (Date.now() - lastAutoGemsRun < 30000) return;
 
-  // 1. Detect equipped from hunt reply
   const equipped = parseHuntReply(huntHtml);
   const missing = Object.keys(equipped).filter(c => !equipped[c]);
   if (missing.length === 0) {
@@ -75,7 +73,7 @@ export async function triggerAutoGems(huntHtml) {
   console.log(`[AutoGems] Missing/depleted: ${missing.join(', ')}`);
   lastAutoGemsRun = Date.now();
 
-  // 2. Get inventory (cached)
+  // Get inventory (cached)
   let invHtml;
   if (inventoryCache && (Date.now() - inventoryCacheTime) < INVENTORY_CACHE_TTL) {
     console.log('[AutoGems] Using cached inventory.');
@@ -97,14 +95,12 @@ export async function triggerAutoGems(huntHtml) {
     inventoryCacheTime = Date.now();
   }
 
-  // 3. Parse inventory
   const invGems = parseInventory(invHtml);
   if (invGems.length === 0) {
     console.log('[AutoGems] No gems parsed from inventory.');
     return;
   }
 
-  // 4. Highest tier per missing category
   const toUse = [];
   for (const cat of missing) {
     const candidates = invGems.filter(g => g.category === cat);
