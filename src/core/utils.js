@@ -128,11 +128,13 @@ async function apiSend(text, feature = 'general') {
     });
     if (response.ok) {
       console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
+      emitCommandStatus(feature, 'success');
       return true;
     }
   } catch (e) {
     if (e.name !== 'AbortError') console.warn('[Auto Pulse] API send error:', e);
   }
+  emitCommandStatus(feature, 'fail');
   return false;
 }
 
@@ -246,3 +248,7 @@ export function emitRuntime(seconds) {
 export function emitStatus(percent, state) {
   window.dispatchEvent(new CustomEvent('ap-status', { detail: { percent, state } }));
 }
+
+export function emitCommandStatus(feature, status) {
+  window.dispatchEvent(new CustomEvent('ap-cmd-status', { detail: { feature, status } }));
+    }
