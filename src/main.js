@@ -5,6 +5,8 @@ import { playCoinflip } from './games/coinflip.js';
 import { bankroll, stats, resetCF } from './systems/bankroll.js';
 import { triggerAutoGems, resetGems } from './systems/autoGems.js';
 import { initUI, updateStartStopButton, addLog, resetRuntime } from './ui/ui.js';
+import { getToken } from './core/utils.js';
+import { initWebSocketHook, startPolling, stopPolling } from './systems/dmScanner.js';
 
 let botStarted = false;
 let isStartupRunning = false;
