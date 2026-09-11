@@ -245,3 +245,19 @@ window.dispatchEvent(new CustomEvent('ap-tracker', { detail: { hunt, battle, cfW
 window.dispatchEvent(new CustomEvent('ap-runtime', { detail: { seconds } }));
 window.dispatchEvent(new CustomEvent('ap-status', { detail: { percent, state } }));
 }
+// --- Event bus helpers for UI ---
+export function emitLog(msg, type = 'info') {
+  window.dispatchEvent(new CustomEvent('ap-log', { detail: { msg, type } }));
+}
+
+export function emitTracker(stats) {
+  window.dispatchEvent(new CustomEvent('ap-tracker', { detail: stats }));
+}
+
+export function emitRuntime(seconds) {
+  window.dispatchEvent(new CustomEvent('ap-runtime', { detail: { seconds } }));
+}
+
+export function emitStatus(percent, state) {
+  window.dispatchEvent(new CustomEvent('ap-status', { detail: { percent, state } }));
+}
