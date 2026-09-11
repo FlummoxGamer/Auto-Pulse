@@ -17,14 +17,14 @@ function predictSide() {
 export async function playCoinflip() {
   const bet = Math.min(CONFIG.CF_BASE_BET * FIBONACCI[fibIndex], CONFIG.CF_MAX_BET);
   const side = predictSide();
-  await sendDiscordMessage(`owo cf ${bet} ${side}`);
+  await sendDiscordMessage(`owo cf ${bet} ${side}`, 'coinflip');
   await sleep(getHumanDelay(5000, 7000));
 
   const chat = document.querySelector('ol[class*="scroller"]');
   const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
   let cfMsg = null;
   for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].innerText.toLowerCase().includes('flipped')) {
+    if (msgs[i].innerText.toLowerCase().includes("spins")) {
       cfMsg = msgs[i];
       break;
     }
