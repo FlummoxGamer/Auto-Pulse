@@ -127,7 +127,7 @@ async function startBot() {
   resetRuntime();
   startKeepAlive();
   startObserver();
-  startPolling(getToken, stopBot);
+  startPolling(getToken, stopBot, () => botStarted);
 
   emitStatus(25, 'active');
   await bankroll.init();
