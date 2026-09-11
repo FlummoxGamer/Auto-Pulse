@@ -174,3 +174,4 @@ function init() {
     resetBankroll: () => { resetCF(); emitTracker(stats); }
   });
 }
+init();
