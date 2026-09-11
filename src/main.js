@@ -39,18 +39,15 @@ function startObserver() {
         const text = (node.innerText || '').toLowerCase();
         if (text.includes('you found:')) { stats.hunt++; emitTracker(stats); }
         if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
-        if (text.includes('the coin spins')) {
-          stats.cfTotal++;
-          if (text.includes('you won')) stats.cfWins++;
-          emitTracker(stats);
+        
+        if (text.includes('cowoncy') && text.includes('you currently have')) {
+  const match = text.match(/you currently have ([\d,]+) cowoncy/i);
+  if (match) {
+    stats.owo = parseInt(match[1].replace(/,/g, ''));
+    emitTracker(stats);
+  }
         }
-        if (text.includes('you currently have')) {
-          const match = text.match(/you currently have ([\d,]+)/);
-          if (match) {
-            stats.owo = parseInt(match[1].replace(/,/g, ''));
-            emitTracker(stats);
-          }
-        }
+      }
 
         if (CONFIG.ENABLE_AUTO_GEMS) {
           const html = node.innerHTML || '';
