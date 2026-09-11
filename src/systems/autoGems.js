@@ -7,25 +7,25 @@ let inventoryCache = null;
 let inventoryCacheTime = 0;
 const INVENTORY_CACHE_TTL = 10 * 60 * 1000;
 
+// NEW: Track what we just equipped (category -> timestamp)
+const equippedMemory = {};
+const EQUIP_MEMORY_TTL = 30 * 60 * 1000; // 30 minutes
+
 export function resetGems() {
   lastAutoGemsRun = 0;
   inventoryCache = null;
   inventoryCacheTime = 0;
+  for (const k of Object.keys(equippedMemory)) delete equippedMemory[k];
   console.log('[AutoGems] State reset.');
 }
 
-// Parse alt name → { category, tier, prefix, suffix }
 function parseAlt(alt) {
   const clean = alt.replace(/:/g, '').toLowerCase();
-
-  // Special: Xstar (no number)
   const starMatch = clean.match(/^([curemlf])star$/);
   if (starMatch) {
     const tier = RARITY_PREFIX[starMatch[1]];
     if (tier) return { category: 'SPECIAL', tier, prefix: starMatch[1], suffix: 'star' };
   }
-
-  // Regular: Xgem1 / Xgem3 / Xgem4
   const gemMatch = clean.match(/^([curemlf])gem([134])$/);
   if (gemMatch) {
     const tier = RARITY_PREFIX[gemMatch[1]];
@@ -36,7 +36,6 @@ function parseAlt(alt) {
   return null;
 }
 
-// Parse equipped from hunt reply (uses alt attributes)
 function parseHuntReply(html) {
   const equipped = { HUNTING: false, EMPOWERING: false, LUCKY: false, SPECIAL: false };
   const regex = /alt="([^"]*(?:gem|star)[^"]*)"/gi;
@@ -47,7 +46,9 @@ function parseHuntReply(html) {
     const after = html.slice(m.index, m.index + 80);
     if (!/\[0\//.test(after)) {
       equipped[parsed.category] = true;
-      console.log(`[AutoGems Debug] HUNT: ${m[1]} → ${parsed.category} equipped`);
+      // Refresh memory since we just saw it alive
+      equippedMemory[parsed.category] = Date.now();
+      console.log(`[AutoGems Debug] HUNT: ${m[1]} → ${parsed.category} equipped (memory refreshed)`);
     } else {
       console.log(`[AutoGems Debug] HUNT: ${m[1]} → ${parsed.category} DEPLETED`);
     }
@@ -55,17 +56,14 @@ function parseHuntReply(html) {
   return equipped;
 }
 
-// Parse inventory — allows arbitrary HTML between the number and the img tag
 function parseInventory(html) {
   const gems = [];
-  // Match: <3-digit number> ... (up to 200 chars of any HTML) ... alt=":XgemN:" or ":Xstar:"
   const regex = /(\d{3})[\s\S]{0,200}?alt="([^"]*(?:gem|star)[^"]*)"/gi;
   let m;
   while ((m = regex.exec(html)) !== null) {
     const id = m[1];
     const parsed = parseAlt(m[2]);
     if (!parsed) continue;
-    // Guard: make sure the matched number isn't part of a longer number (like a data-id)
     const before = html.slice(Math.max(0, m.index - 1), m.index);
     if (/\d/.test(before)) continue;
     gems.push({ id, ...parsed });
@@ -78,11 +76,24 @@ export async function triggerAutoGems(huntHtml) {
   if (Date.now() - lastAutoGemsRun < 30000) return;
 
   const equipped = parseHuntReply(huntHtml);
-  const missing = Object.keys(equipped).filter(c => !equipped[c]);
+
+  // Build missing list, then filter out categories we equipped recently
+  const missing = [];
+  for (const cat of Object.keys(equipped)) {
+    if (equipped[cat]) continue; // visible and active
+    const memTime = equippedMemory[cat];
+    if (memTime && (Date.now() - memTime) < EQUIP_MEMORY_TTL) {
+      console.log(`[AutoGems] Skipping ${cat} (equipped ${Math.round((Date.now() - memTime)/60000)}m ago)`);
+      continue;
+    }
+    missing.push(cat);
+  }
+
   if (missing.length === 0) {
-    console.log('[AutoGems] All 4 gems active.');
+    console.log('[AutoGems] Nothing to equip.');
     return;
   }
+
   console.log(`[AutoGems] Missing/depleted: ${missing.join(', ')}`);
   lastAutoGemsRun = Date.now();
 
@@ -109,7 +120,7 @@ export async function triggerAutoGems(huntHtml) {
 
   const invGems = parseInventory(invHtml);
   if (invGems.length === 0) {
-    console.log('[AutoGems] No gems parsed from inventory.');
+    console.log('[AutoGems] No gems parsed.');
     return;
   }
 
@@ -128,5 +139,16 @@ export async function triggerAutoGems(huntHtml) {
 
   const cmd = `owo use ${toUse.join(' ')}`;
   console.log(`[AutoGems] Equipping: ${cmd}`);
-  await sendDiscordMessage(cmd, 'autoGems', true);
+  const success = await sendDiscordMessage(cmd, 'autoGems', true);
+
+  // NEW: Record each equipped category in memory
+  if (success) {
+    for (const cat of missing) {
+      const used = invGems.find(g => g.category === cat && toUse.includes(g.id));
+      if (used) {
+        equippedMemory[cat] = Date.now();
+        console.log(`[AutoGems] Remembered ${cat} as equipped for 30m.`);
       }
+    }
+  }
+}
