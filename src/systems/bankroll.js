@@ -1,6 +1,13 @@
 import { CONFIG } from '../core/config.js';
 import { sendDiscordMessage, parseBalance, sleep } from '../core/utils.js';
 
+export const stats = {
+  hunt: 0, battle: 0,
+  cfWins: 0, cfTotal: 0,
+  owo: 0,
+  runtimeSeconds: 0
+};
+
 export const bankroll = {
   sessionStart: null,
   sessionBudget: null,
@@ -9,7 +16,7 @@ export const bankroll = {
   profitTarget: null,
 
   async init() {
-    await sendDiscordMessage('owo cash');  // corrected command
+    await sendDiscordMessage('owo cash', 'bankroll', true);
     await sleep(3000);
     const chat = document.querySelector('ol[class*="scroller"]');
     const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
@@ -19,7 +26,7 @@ export const bankroll = {
       this.sessionStart = bal;
       this.sessionBudget = Math.round(bal * CONFIG.BANKROLL_PERCENT);
       this.profitTarget = Math.round(bal * CONFIG.PROFIT_TARGET_PERCENT);
-      console.log(`[Bankroll] Start: ${bal}, Budget: ${this.sessionBudget}, Target: ${this.profitTarget}`);
+      stats.owo = bal;
     }
   },
 
@@ -31,14 +38,13 @@ export const bankroll = {
     this.profitTarget = null;
   },
 
-  isOverBudget() {
-    return this.sessionLoss > this.sessionBudget;
-  },
-
-  isProfitTargetHit() {
-    return this.sessionProfit >= this.profitTarget;
-  },
-
-  addProfit(amount) { this.sessionProfit += amount; },
-  addLoss(amount) { this.sessionLoss += amount; }
+  isOverBudget() { return this.sessionLoss > this.sessionBudget; },
+  isProfitTargetHit() { return this.sessionProfit >= this.profitTarget; },
+  addProfit(a) { this.sessionProfit += a; },
+  addLoss(a) { this.sessionLoss += a; }
 };
+
+export function resetCF() {
+  stats.cfWins = 0;
+  stats.cfTotal = 0;
+}
