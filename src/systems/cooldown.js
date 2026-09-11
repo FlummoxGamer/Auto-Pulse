@@ -41,6 +41,15 @@ export function isOnCooldown(commandText) {
 
   lastSent[baseCommand] = now;
   return false;
-  export function getRemainingCooldown(commandText) { ... }
-export function getAllCooldowns() { ... }
-    }
+}
+export function getRemainingCooldown(commandText) {
+  let baseCommand = commandText.split(' ').slice(0, 2).join(' ').toLowerCase();
+  if (commandText.startsWith('owo use')) baseCommand = 'owo use';
+  if (baseCommand === 'owo hunt') baseCommand = 'owo h';
+  if (baseCommand === 'owo battle') baseCommand = 'owo b';
+
+  const cooldownTime = COOLDOWNS[baseCommand] || COOLDOWNS['default'];
+  const lastTime = lastSent[baseCommand] || 0;
+  const remaining = cooldownTime - (Date.now() - lastTime);
+  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+}
