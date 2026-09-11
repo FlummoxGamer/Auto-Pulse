@@ -1,23 +1,17 @@
 import { CONFIG } from '../core/config.js';
-import { getRemainingCooldown } from '../systems/cooldown.js';
 
 let callbacks = { start: null, stop: null, isRunning: () => false, resetBankroll: null };
 let panel = null;
 let btn = null;
 let startBtn = null;
 let statusRing = null;
-let statusPct = 0;
 let runtimeEl = null;
 let logsEl = null;
 let trackerEl = null;
 let statusTextEl = null;
-const toggles = {};
-
-// ---- Runtime timer ----
 let runtimeSec = 0;
 let runtimeTimer = null;
 
-// ---- LOGO URL (upload your image to assets/logo.png in your repo) ----
 const LOGO_URL = 'https://raw.githubusercontent.com/FlummoxGamer/Auto-Pulse/main/assets/logo.png';
 
 export function initUI(handlers) {
@@ -27,7 +21,6 @@ export function initUI(handlers) {
 }
 
 export function createUI() {
-  // ---- Floating gear (logo) button ----
   btn = document.createElement('img');
   btn.id = 'ap-ui-btn';
   btn.src = LOGO_URL;
@@ -43,7 +36,6 @@ export function createUI() {
   `;
   document.body.appendChild(btn);
 
-  // ---- Panel ----
   panel = document.createElement('div');
   panel.id = 'ap-ui-panel';
   panel.style.cssText = `
@@ -154,7 +146,6 @@ export function createUI() {
 
   document.body.appendChild(panel);
 
-  // Wire up
   startBtn = panel.querySelector('#ap-start-btn');
   startBtn.addEventListener('click', () => {
     if (callbacks.isRunning()) callbacks.stop();
@@ -178,7 +169,6 @@ export function createUI() {
     panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
   });
 
-  // Event listeners
   window.addEventListener('ap-log', (e) => addLog(e.detail.msg, e.detail.type));
   window.addEventListener('ap-tracker', (e) => updateTracker(e.detail));
   window.addEventListener('ap-runtime', (e) => updateRuntimeUI(e.detail.seconds));
@@ -220,16 +210,14 @@ function buildToggles() {
   });
 }
 
-// ---- Public helpers called by event listeners ----
 export function addLog(msg, type = 'info') {
   if (!logsEl) return;
   const line = document.createElement('div');
   line.className = `ap-log-${type}`;
-  const time = new Date().toLocaleTimeString('en-GB', { hour12:false });
+  const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
   line.textContent = `[${time}] ${msg}`;
   logsEl.appendChild(line);
   logsEl.scrollTop = logsEl.scrollHeight;
-  // Trim to 100 lines
   while (logsEl.children.length > 100) logsEl.removeChild(logsEl.firstChild);
 }
 
@@ -238,7 +226,7 @@ export function updateTracker(stats) {
   trackerEl.innerHTML = `
     <div>hunt - ${stats.hunt || 0}</div>
     <div>battle - ${stats.battle || 0}</div>
-    <div>cf - ${stats.cfWin || 0}/${stats.cfTotal || 0}</div>
+    <div>cf - ${stats.cfWins || 0}/${stats.cfTotal || 0}</div>
     <div>owo - ${stats.owo || 0}</div>
   `;
 }
@@ -285,4 +273,4 @@ function startRuntimeTimer() {
 export function resetRuntime() {
   runtimeSec = 0;
   updateRuntimeUI(0);
-    }
+}
