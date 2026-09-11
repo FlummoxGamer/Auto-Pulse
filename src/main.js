@@ -55,7 +55,7 @@ function startObserver() {
         }
       }
     }
-  ));
+  );
   observer.observe(chatContainer, { childList: true, subtree: true });
 }
 
