@@ -6,9 +6,11 @@ let pollInterval = null;
 let stopCallback = null;
 let websocketHooked = false;
 let tokenFn = null;
+let isRunningFn = () => false;
 
 // Shared scanner used by both WebSocket and Polling
 function scanDMMessage(authorId, content, authorName, isBot, source) {
+  if (!isRunningFn()) return;  // Option B: only scan while bot is running
   if (!content) return;
   if (!isBot && !CONFIG.TRACKED_IDS.includes(authorId)) return;
 
@@ -35,11 +37,12 @@ function scanDMMessage(authorId, content, authorName, isBot, source) {
 }
 
 // --- WebSocket hook (real-time) ---
-export function initWebSocketHook(getTokenFn, onStop) {
+export function initWebSocketHook(getTokenFn, onStop, isRunning) {
   if (websocketHooked) return;
   websocketHooked = true;
   tokenFn = getTokenFn;
   stopCallback = onStop;
+  isRunningFn = isRunning || (() => false);
 
   try {
     const origAdd = WebSocket.prototype.addEventListener;
@@ -81,6 +84,7 @@ export function initWebSocketHook(getTokenFn, onStop) {
 
 // --- Polling (backup, every 30s) ---
 async function pollDMs() {
+  if (!isRunningFn()) return;
   try {
     const token = tokenFn ? await tokenFn() : null;
     if (!token) return;
@@ -118,9 +122,10 @@ async function pollDMs() {
   }
 }
 
-export function startPolling(getTokenFn, onStop) {
+export function startPolling(getTokenFn, onStop, isRunning) {
   tokenFn = getTokenFn;
   if (onStop) stopCallback = onStop;
+  if (isRunning) isRunningFn = isRunning;
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(pollDMs, CONFIG.DM_POLL_INTERVAL);
   console.log(`[DM Scanner] Polling started (every ${CONFIG.DM_POLL_INTERVAL / 1000}s).`);
@@ -128,4 +133,4 @@ export function startPolling(getTokenFn, onStop) {
 
 export function stopPolling() {
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    }
+            }
