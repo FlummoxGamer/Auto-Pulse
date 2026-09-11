@@ -20,18 +20,14 @@ let isProcessingQueue = false;
 async function processQueue() {
   if (isProcessingQueue) return;
   isProcessingQueue = true;
-  
   while (commandQueue.length > 0 && !isHardStopped) {
     const { text, feature, resolve, force } = commandQueue.shift();
-    
-    // Check cooldown unless forced
     if (!force && isOnCooldown(text)) {
       resolve(false);
-      continue; 
+      continue;
     }
-
     const success = await apiSend(text, feature);
-    resolve(success); 
+    resolve(success);
     await new Promise(r => setTimeout(r, getHumanDelay(CONFIG.QUEUE_DELAY_MIN, CONFIG.QUEUE_DELAY_MAX)));
   }
   isProcessingQueue = false;
@@ -86,8 +82,8 @@ XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
   return originalXHR.call(this, name, value);
 };
 
-  export async function getToken() {
-  if (capturedtoken) return capturedToken;
+export async function getToken() {
+  if (capturedToken) return capturedToken;
   return await GM_getValue('discord_token', null);
 }
 
@@ -106,12 +102,6 @@ export function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 export function sanitizeText(text) {
   return text.replace(/[\u200B-\u200F\u2060\uFEFF]/g, '');
-}
-
-export const featureStatus = {};
-export function setFeatureStatus(feature, status) {
-  featureStatus[feature] = status;
-  window.dispatchEvent(new CustomEvent('ap-status-update', { detail: { feature, status } }));
 }
 
 async function apiSend(text, feature = 'general') {
@@ -138,13 +128,11 @@ async function apiSend(text, feature = 'general') {
     });
     if (response.ok) {
       console.log(`%c[Auto Pulse] API Sent: ${text}`, 'color:#00ff00;font-weight:bold;');
-      setFeatureStatus(feature, 'success');
       return true;
     }
   } catch (e) {
     if (e.name !== 'AbortError') console.warn('[Auto Pulse] API send error:', e);
   }
-  setFeatureStatus(feature, 'fail');
   return false;
 }
 
@@ -241,6 +229,7 @@ export function triggerNotification(msg) {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') navigator.serviceWorker?.ready?.then(reg => reg.showNotification("Auto Pulse", { body: msg })).catch(() => alert(msg));
   } catch (e) {}
 }
+
 // --- Event bus helpers for UI ---
 export function emitLog(msg, type = 'info') {
   window.dispatchEvent(new CustomEvent('ap-log', { detail: { msg, type } }));
