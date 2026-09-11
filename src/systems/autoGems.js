@@ -14,19 +14,18 @@ export function resetGems() {
   console.log('[AutoGems] State reset.');
 }
 
-// Helper: from alt name → { category, tier }
+// Parse alt name → { category, tier, prefix, suffix }
 function parseAlt(alt) {
-  // alt example: ":egem3:" or ":cstar:" or "fgem1"
   const clean = alt.replace(/:/g, '').toLowerCase();
-  
+
   // Special: Xstar (no number)
   const starMatch = clean.match(/^([curemlf])star$/);
   if (starMatch) {
     const tier = RARITY_PREFIX[starMatch[1]];
     if (tier) return { category: 'SPECIAL', tier, prefix: starMatch[1], suffix: 'star' };
   }
-  
-  // Others: Xgem1, Xgem3, Xgem4
+
+  // Regular: Xgem1 / Xgem3 / Xgem4
   const gemMatch = clean.match(/^([curemlf])gem([134])$/);
   if (gemMatch) {
     const tier = RARITY_PREFIX[gemMatch[1]];
@@ -34,11 +33,10 @@ function parseAlt(alt) {
     const category = suffix === '1' ? 'HUNTING' : suffix === '3' ? 'EMPOWERING' : 'LUCKY';
     if (tier) return { category, tier, prefix: gemMatch[1], suffix };
   }
-  
   return null;
 }
 
-// Parse equipped from hunt reply
+// Parse equipped from hunt reply (uses alt attributes)
 function parseHuntReply(html) {
   const equipped = { HUNTING: false, EMPOWERING: false, LUCKY: false, SPECIAL: false };
   const regex = /alt="([^"]*(?:gem|star)[^"]*)"/gi;
@@ -46,7 +44,6 @@ function parseHuntReply(html) {
   while ((m = regex.exec(html)) !== null) {
     const parsed = parseAlt(m[1]);
     if (!parsed) continue;
-
     const after = html.slice(m.index, m.index + 80);
     if (!/\[0\//.test(after)) {
       equipped[parsed.category] = true;
@@ -58,15 +55,19 @@ function parseHuntReply(html) {
   return equipped;
 }
 
-// Parse inventory: "052 <img alt=":cgem1:"> 1"
+// Parse inventory — allows arbitrary HTML between the number and the img tag
 function parseInventory(html) {
   const gems = [];
-  const regex = /(\d{3})\s*<img[^>]*?alt="([^"]*(?:gem|star)[^"]*)"[^>]*?>/gi;
+  // Match: <3-digit number> ... (up to 200 chars of any HTML) ... alt=":XgemN:" or ":Xstar:"
+  const regex = /(\d{3})[\s\S]{0,200}?alt="([^"]*(?:gem|star)[^"]*)"/gi;
   let m;
   while ((m = regex.exec(html)) !== null) {
     const id = m[1];
     const parsed = parseAlt(m[2]);
     if (!parsed) continue;
+    // Guard: make sure the matched number isn't part of a longer number (like a data-id)
+    const before = html.slice(Math.max(0, m.index - 1), m.index);
+    if (/\d/.test(before)) continue;
     gems.push({ id, ...parsed });
     console.log(`[AutoGems Debug] INV: ${id} = ${m[2]} (${parsed.category}, tier ${parsed.tier})`);
   }
@@ -128,4 +129,4 @@ export async function triggerAutoGems(huntHtml) {
   const cmd = `owo use ${toUse.join(' ')}`;
   console.log(`[AutoGems] Equipping: ${cmd}`);
   await sendDiscordMessage(cmd, 'autoGems', true);
-}
+      }
