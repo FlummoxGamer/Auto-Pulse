@@ -164,8 +164,9 @@ function stopBot() {
 
 function init() {
   try { if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') Notification.requestPermission().catch(() => {}); } catch (e) {}
-  //realtime dm hook ( runs always, even when bot is off )
-  initWebSocketHook(getToken, stopBot);
+
+  initWebSocketHook(getToken, stopBot, () => botStarted);
+
   initUI({
     start: startBot,
     stop: stopBot,
@@ -173,5 +174,3 @@ function init() {
     resetBankroll: () => { resetCF(); emitTracker(stats); }
   });
 }
-
-init();
