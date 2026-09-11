@@ -41,4 +41,6 @@ export function isOnCooldown(commandText) {
 
   lastSent[baseCommand] = now;
   return false;
-}
+  export function getRemainingCooldown(commandText) { ... }
+export function getAllCooldowns() { ... }
+    }
