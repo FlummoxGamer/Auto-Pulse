@@ -1,9 +1,10 @@
 import { CONFIG } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setFeatureStatus, featureStatus, setHardStop, isHardStopped } from './core/utils.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitRuntime, emitStatus } from './core/utils.js';
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
-import { bankroll } from './systems/bankroll.js';
+import { bankroll, stats, resetCF } from './systems/bankroll.js';
 import { triggerAutoGems, resetGems } from './systems/autoGems.js';
+import { initUI, updateStartStopButton, addLog, resetRuntime } from './ui/ui.js';
 
 let botStarted = false;
 let isStartupRunning = false;
@@ -11,9 +12,6 @@ let huntTimer = null;
 let gambleTimer = null;
 let cycleCounter = 0;
 let lastPrayTime = 0;
-let startStopBtn = null;
-const statusDots = {};
-
 let observer = null;
 
 function startObserver() {
@@ -23,33 +21,43 @@ function startObserver() {
 
   observer = new MutationObserver((mutations) => {
     if (!botStarted || isHardStopped) return;
-
-    for (let mutation of mutations) {
-      for (let node of mutation.addedNodes) {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
         if (node.nodeType !== 1) continue;
 
         const scan = scanChat(node);
         if (scan && scan.type === 'captcha') {
-          console.error('[Auto Pulse] CAPTCHA DETECTED! Hard stopping.');
           playNotificationSound();
           triggerNotification(`Captcha detected! Bot stopped.\nTrigger: "${scan.trigger}"`);
           stopBot();
           return;
         }
 
-           // Auto Gems detection: only trigger on OwO hunt replies
-           if (CONFIG.ENABLE_AUTO_GEMS) {
-           const innerText = node.innerText || '';
-           if (/hunt is empowered/i.test(innerText)) {
-           triggerAutoGems(node.innerHTML);
+        // --- Tracker counting ---
+        const text = (node.innerText || '').toLowerCase();
+        if (text.includes('you found:')) { stats.hunt++; emitTracker(stats); }
+        if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
+        if (text.includes('the coin spins')) {
+          stats.cfTotal++;
+          if (text.includes('you won')) stats.cfWins++;
+          emitTracker(stats);
+        }
+        if (text.includes('you currently have')) {
+          const match = text.match(/you currently have ([\d,]+)/);
+          if (match) {
+            stats.owo = parseInt(match[1].replace(/,/g, ''));
+            emitTracker(stats);
           }
+        }
+
+        if (CONFIG.ENABLE_AUTO_GEMS) {
+          const html = node.innerHTML || '';
+          if (/hunt is empowered/i.test(text)) triggerAutoGems(html);
         }
       }
     }
   });
-
   observer.observe(chatContainer, { childList: true, subtree: true });
-  console.log('[Auto Pulse] Observer started.');
 }
 
 function stopObserver() { if (observer) { observer.disconnect(); observer = null; } }
@@ -99,26 +107,40 @@ async function gambleLoop() {
 async function startBot() {
   if (botStarted) return;
 
-  console.log('[Auto Pulse] Running startup safety scan...');
+  emitStatus(0, 'active');
+  emitLog('Running startup safety scan...', 'info');
   const startupScan = scanChat();
   if (startupScan && startupScan.type === 'captcha') {
-    console.error('[Auto Pulse] CAPTCHA in recent chat! Aborting start.');
+    emitLog('Warning in recent chat! Aborted.', 'error');
     playNotificationSound();
     triggerNotification(`Warning in recent chat! Aborted.\nTrigger: "${startupScan.trigger}"`);
+    emitStatus(0, 'error');
     return;
   }
 
   botStarted = true;
   setHardStop(false);
-  updateStartStopButton();
+  updateStartStopButton(true);
   resetGems();
+  resetRuntime();
   startKeepAlive();
   startObserver();
 
+  emitStatus(25, 'active');
   await bankroll.init();
+  emitLog('Bankroll initialized.', 'success');
+
+  emitStatus(50, 'active');
   lastPrayTime = Date.now();
   await runStartupCommands();
-  await sleep(5000); // Startup settle delay
+  emitLog('Startup commands done.', 'success');
+
+  emitStatus(75, 'active');
+  await sleep(5000);
+  emitLog('Settle complete.', 'success');
+
+  emitStatus(100, 'active');
+  emitLog('Bot started.', 'success');
 
   huntBattleLoop();
   gambleLoop();
@@ -128,84 +150,24 @@ function stopBot() {
   botStarted = false;
   isStartupRunning = false;
   setHardStop(true);
-  updateStartStopButton();
+  updateStartStopButton(false);
   stopKeepAlive();
   stopObserver();
   if (huntTimer) clearTimeout(huntTimer);
   if (gambleTimer) clearTimeout(gambleTimer);
-}
-
-function updateStartStopButton() {
-  if (startStopBtn) {
-    startStopBtn.textContent = botStarted ? 'Stop Bot' : 'Start Bot';
-    startStopBtn.style.background = botStarted ? '#e74c3c' : '#2ecc71';
-  }
-}
-
-function updateStatusDots() {
-  for (const [feature, dot] of Object.entries(statusDots)) {
-    const status = featureStatus[feature] || 'idle';
-    dot.style.background = status === 'success' ? '#2ecc71' : status === 'fail' ? '#e74c3c' : '#95a5a6';
-  }
-}
-
-function createUI() {
-  const btn = document.createElement('div');
-  btn.id = 'ap-ui-btn';
-  btn.style.cssText = 'position:fixed;bottom:90px;right:20px;width:50px;height:50px;background:#5865F2;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;box-shadow:0 4px 8px rgba(0,0,0,0.3);color:white;font-size:24px;font-family:Arial,sans-serif;user-select:none;';
-  btn.textContent = '⚙️';
-  document.body.appendChild(btn);
-
-  const panel = document.createElement('div');
-  panel.id = 'ap-ui-panel';
-  panel.style.cssText = 'position:fixed;bottom:150px;right:20px;background:#2C2F33;border:1px solid #444;border-radius:10px;padding:12px;z-index:9998;display:none;flex-direction:column;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:Arial,sans-serif;color:white;min-width:170px;';
-
-  startStopBtn = document.createElement('button');
-  startStopBtn.textContent = 'Start Bot';
-  startStopBtn.style.cssText = 'background:#2ecc71;color:white;border:none;border-radius:5px;padding:8px;cursor:pointer;font-size:14px;width:100%;';
-  startStopBtn.addEventListener('click', () => { if (!botStarted) startBot(); else stopBot(); });
-  panel.appendChild(startStopBtn);
-
-  const toggles = [
-    { label: 'Hunt', key: 'ENABLE_HUNT' }, { label: 'Battle', key: 'ENABLE_BATTLE' },
-    { label: 'Coinflip', key: 'ENABLE_COINFLIP' }, { label: 'Pray', key: 'ENABLE_PRAY' },
-    { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS' }, { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS' },
-    { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE' }
-  ];
-
-  toggles.forEach(t => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
-    const dot = document.createElement('span');
-    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#95a5a6;display:inline-block;margin-right:5px;';
-    statusDots[t.key] = dot;
-    const label = document.createElement('span');
-    label.textContent = t.label;
-    label.style.fontSize = '14px';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = CONFIG[t.key];
-    checkbox.addEventListener('change', () => {
-      CONFIG[t.key] = checkbox.checked;
-      if (t.key === 'ENABLE_KEEP_ALIVE') { if (CONFIG[t.key]) startKeepAlive(); else stopKeepAlive(); }
-    });
-    row.appendChild(dot); row.appendChild(label); row.appendChild(checkbox); panel.appendChild(row);
-  });
-
-  window.addEventListener('ap-status-update', updateStatusDots);
-
-  const resetBtn = document.createElement('button');
-  resetBtn.textContent = 'Reset Bankroll';
-  resetBtn.style.cssText = 'background:#f39c12;color:white;border:none;border-radius:5px;padding:5px;cursor:pointer;font-size:12px;width:100%;';
-  resetBtn.addEventListener('click', () => { bankroll.reset(); });
-  panel.appendChild(resetBtn);
-  document.body.appendChild(panel);
-  btn.addEventListener('click', () => { panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; updateStatusDots(); });
+  emitLog('Bot stopped.', 'warn');
+  emitStatus(0, 'idle');
 }
 
 function init() {
   try { if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') Notification.requestPermission().catch(() => {}); } catch (e) {}
-  createUI();
+
+  initUI({
+    start: startBot,
+    stop: stopBot,
+    isRunning: () => botStarted,
+    resetBankroll: () => { resetCF(); emitTracker(stats); }
+  });
 }
 
 init();
