@@ -131,7 +131,6 @@ async function startBot() {
   emitStatus(25, 'active');
   await bankroll.init();
   emitLog('Bankroll initialized.', 'success');
-
   emitStatus(50, 'active');
   lastPrayTime = Date.now();
   await runStartupCommands();
@@ -163,7 +162,8 @@ function stopBot() {
 
 function init() {
   try { if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') Notification.requestPermission().catch(() => {}); } catch (e) {}
-
+  //realtime dm hook ( runs always, even when bot is off )
+  initWebSocketHook(getToken, stopBot);
   initUI({
     start: startBot,
     stop: stopBot,
