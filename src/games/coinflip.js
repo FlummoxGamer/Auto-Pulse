@@ -1,12 +1,12 @@
 import { CONFIG, FIBONACCI } from '../core/config.js';
-import { sendDiscordMessage, sleep, getHumanDelay } from '../core/utils.js';
+import { sendDiscordMessage, sleep, getHumanDelay, emitTracker } from '../core/utils.js';
+import { stats } from '../systems/bankroll.js';
 
 let fibIndex = 0;
 let history = [];
 
-// Predict based on last 5 results (if 3+ are heads, bet tails, etc.)
 function predictSide() {
-  if (history.length < 3) return 'h'; // default heads
+  if (history.length < 3) return 'h';
   const heads = history.filter(x => x === 'heads').length;
   const tails = history.length - heads;
   if (heads > tails) return 't';
@@ -32,8 +32,18 @@ export async function playCoinflip() {
   if (!cfMsg) return;
 
   const text = cfMsg.innerText.toLowerCase();
-  if (text.includes('won')) fibIndex = 0;
-  else if (text.includes('lost')) fibIndex = Math.min(fibIndex + 1, FIBONACCI.length - 1);
+
+  // CF win/loss + balance tracking
+  stats.cfTotal++;
+  if (text.includes('won')) {
+    stats.cfWins++;
+    stats.owo += bet; // net gain = bet
+    fibIndex = 0;
+  } else if (text.includes('lost')) {
+    stats.owo -= bet;
+    fibIndex = Math.min(fibIndex + 1, FIBONACCI.length - 1);
+  }
+  emitTracker(stats);
 
   if (text.includes('heads')) history.push('heads');
   else history.push('tails');
