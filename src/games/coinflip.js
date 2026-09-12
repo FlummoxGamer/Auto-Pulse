@@ -34,7 +34,6 @@ export async function playCoinflip() {
   const side = predictSide();
   await sendDiscordMessage(`owo cf ${bet} ${side}`, 'coinflip');
 
-  // Wait and retry up to 3 times
   let result = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     await sleep(getHumanDelay(4000, 6000));
@@ -48,10 +47,12 @@ export async function playCoinflip() {
   stats.cfTotal++;
   if (text.includes('you won') || text.includes('and you won')) {
     stats.cfWins++;
-    stats.owo += bet;
+    stats.cash += bet;
+    stats.profit += bet;
     fibIndex = 0;
   } else if (text.includes('you lost') || text.includes('and you lost')) {
-    stats.owo -= bet;
+    stats.cash -= bet;
+    stats.profit -= bet;
     fibIndex = Math.min(fibIndex + 1, FIBONACCI.length - 1);
   }
   emitTracker(stats);
