@@ -1,10 +1,10 @@
 import { CONFIG } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitRuntime, emitStatus, getToken } from './core/utils.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitStatus, getToken } from './core/utils.js';
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
 import { bankroll, stats, resetCF } from './systems/bankroll.js';
 import { triggerAutoGems, resetGems } from './systems/autoGems.js';
-import { initUI, updateStartStopButton, addLog, resetRuntime, resetCommandIndicators } from './ui/ui.js';
+import { initUI, updateStartStopButton, resetRuntime, resetCommandIndicators } from './ui/ui.js';
 import { initWebSocketHook, startPolling, stopPolling } from './systems/dmScanner.js';
 
 let botStarted = false;
@@ -34,12 +34,21 @@ function startObserver() {
           return;
         }
 
-        // --- Tracker counting ---
         const text = (node.innerText || '').toLowerCase();
-        if (text.includes('you found:')) { stats.hunt++; emitTracker(stats); }
-        if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
 
-        // Balance — strict match to avoid false positives
+        // Hunt counter — "hunt is empowered" is present on every successful hunt
+        if (text.includes('hunt is empowered')) {
+          stats.hunt++;
+          emitTracker(stats);
+        }
+
+        // Battle counter
+        if (text.includes('goes into battle')) {
+          stats.battle++;
+          emitTracker(stats);
+        }
+
+        // Balance — strict match
         if (text.includes('cowoncy') && text.includes('you currently have')) {
           const match = text.match(/you currently have ([\d,]+) cowoncy/i);
           if (match) {
@@ -158,6 +167,7 @@ function stopBot() {
   if (gambleTimer) clearTimeout(gambleTimer);
   emitLog('Bot stopped.', 'warn');
   emitStatus(0, 'idle');
+  resetRuntime();
 }
 
 function init() {
