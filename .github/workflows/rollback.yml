@@ -1,0 +1,18 @@
+name: Rollback to Last Good Commit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  revert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Revert bad commits
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git revert --no-edit 3f42e8b..HEAD
+          git push
