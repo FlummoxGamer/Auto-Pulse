@@ -14,32 +14,43 @@ function predictSide() {
   return Math.random() < 0.5 ? 'h' : 't';
 }
 
+function findCFResult() {
+  const chat = document.querySelector('ol[class*="scroller"]');
+  if (!chat) return null;
+  const msgs = Array.from(chat.querySelectorAll('li[class*="message"]'));
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const t = msgs[i].innerText.toLowerCase();
+    if ((t.includes('coin spins') || t.includes('spins...')) &&
+        (t.includes('you won') || t.includes('you lost') ||
+         t.includes('and you won') || t.includes('and you lost'))) {
+      return { msg: msgs[i], text: t };
+    }
+  }
+  return null;
+}
+
 export async function playCoinflip() {
   const bet = Math.min(CONFIG.CF_BASE_BET * FIBONACCI[fibIndex], CONFIG.CF_MAX_BET);
   const side = predictSide();
   await sendDiscordMessage(`owo cf ${bet} ${side}`, 'coinflip');
-  await sleep(getHumanDelay(5000, 7000));
 
-  const chat = document.querySelector('ol[class*="scroller"]');
-  const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
-  let cfMsg = null;
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].innerText.toLowerCase().includes("spins")) {
-      cfMsg = msgs[i];
-      break;
-    }
+  // Wait and retry up to 3 times
+  let result = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await sleep(getHumanDelay(4000, 6000));
+    result = findCFResult();
+    if (result) break;
   }
-  if (!cfMsg) return;
 
-  const text = cfMsg.innerText.toLowerCase();
+  if (!result) return;
 
-  // CF win/loss + balance tracking
+  const text = result.text;
   stats.cfTotal++;
-  if (text.includes('won')) {
+  if (text.includes('you won') || text.includes('and you won')) {
     stats.cfWins++;
-    stats.owo += bet; // net gain = bet
+    stats.owo += bet;
     fibIndex = 0;
-  } else if (text.includes('lost')) {
+  } else if (text.includes('you lost') || text.includes('and you lost')) {
     stats.owo -= bet;
     fibIndex = Math.min(fibIndex + 1, FIBONACCI.length - 1);
   }
