@@ -45,13 +45,16 @@ export async function playCoinflip() {
 
   const text = result.text;
   stats.cfTotal++;
+
+  // Cash formula: bet is spent. Win returns 2x bet. Loss returns nothing.
+  stats.cash -= bet;
+
   if (text.includes('you won') || text.includes('and you won')) {
     stats.cfWins++;
-    stats.cash += bet;
-    stats.profit += bet;
+    stats.cash += bet * 2;      // total returned on win
+    stats.profit += bet;        // net profit = bet
     fibIndex = 0;
   } else if (text.includes('you lost') || text.includes('and you lost')) {
-    stats.cash -= bet;
     stats.profit -= bet;
     fibIndex = Math.min(fibIndex + 1, FIBONACCI.length - 1);
   }
