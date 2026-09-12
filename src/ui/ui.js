@@ -17,17 +17,78 @@ let statusTextEl = null;
 let statusDotEl = null;
 let runtimeSec = 0;
 let runtimeTimer = null;
+let logoBlobUrl = null;
 let commandStates = {
   hunt: 'idle', battle: 'idle', coinflip: 'idle', pray: 'idle',
-  autoGems: 'idle', autoItems: 'idle', keepAlive: 'idle'
+  autoGems: 'idle', autoItems: 'idle', keepAlive: 'idle',
+  cash: 'idle', lootbox: 'idle', crate: 'idle'
 };
 const rowEls = {};
 
-export function initUI(handlers) {
+// --- Fetch logo as blob via GM_xmlhttpRequest (bypasses Discord CSP) ---
+function fetchLogoAsBlob() {
+  return new Promise((resolve) => {
+    if (typeof GM_xmlhttpRequest === 'undefined') {
+      console.warn('[UI] GM_xmlhttpRequest not available, using direct URL');
+      resolve(null);
+      return;
+    }
+    try {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: LOGO_URL,
+        responseType: 'blob',
+        timeout: 10000,
+        onload: (res) => {
+          if (res.status === 200 && res.response) {
+            try {
+              const url = URL.createObjectURL(res.response);
+              console.log('[UI] Logo loaded as blob URL');
+              resolve(url);
+            } catch (e) {
+              console.warn('[UI] Failed to create blob URL:', e);
+              resolve(null);
+            }
+          } else {
+            console.warn('[UI] Logo fetch failed, status:', res.status);
+            resolve(null);
+          }
+        },
+        onerror: (err) => {
+          console.warn('[UI] Logo fetch error:', err);
+          resolve(null);
+        },
+        ontimeout: () => {
+          console.warn('[UI] Logo fetch timeout');
+          resolve(null);
+        }
+      });
+    } catch (e) {
+      console.warn('[UI] GM_xmlhttpRequest threw:', e);
+      resolve(null);
+    }
+  });
+}
+
+export async function initUI(handlers) {
   callbacks = { ...callbacks, ...handlers };
   createUI();
   startRuntimeTimer();
   restorePanelPosition();
+
+  // Fetch logo asynchronously, update all img tags when ready
+  logoBlobUrl = await fetchLogoAsBlob();
+  if (logoBlobUrl) {
+    const btnImg = document.getElementById('ap-ui-btn');
+    const cardImg = document.getElementById('ap-logo-card');
+    if (btnImg) btnImg.src = logoBlobUrl;
+    if (cardImg) {
+      cardImg.src = logoBlobUrl;
+      cardImg.style.display = 'block';
+      const fallback = cardImg.nextElementSibling;
+      if (fallback) fallback.style.display = 'none';
+    }
+  }
 }
 
 function makeWavePath(state) {
@@ -47,7 +108,6 @@ function makeWavePath(state) {
 }
 
 export function createUI() {
-  // ---------- GEAR BUTTON (no rotation, wrapper with rotating border) ----------
   btnWrap = document.createElement('div');
   btnWrap.id = 'ap-ui-btn-wrap';
   btnWrap.style.cssText = `
@@ -55,7 +115,6 @@ export function createUI() {
     border-radius:50%;cursor:pointer;z-index:9999;
     padding:3px;box-sizing:border-box;
     background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
-    background-size:100% 100%;
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 4px 12px rgba(0,255,136,0.35);
   `;
@@ -84,7 +143,6 @@ export function createUI() {
   btnWrap.appendChild(btnInner);
   document.body.appendChild(btnWrap);
 
-  // ---------- PANEL (no rotation, wrapper has the border) ----------
   panelWrap = document.createElement('div');
   panelWrap.id = 'ap-ui-wrap';
   panelWrap.style.cssText = `
@@ -116,8 +174,7 @@ export function createUI() {
           "core buttons tracker"
           "core logs logs"; }
       .ap-card { background:#15161c; border:1px solid #232530; border-radius:10px; padding:10px; box-sizing:border-box;}
-      .ap-title-bar { display:flex; flex-direction:column; align-items:center; margin-bottom:10px; cursor:grab; user-select:none; touch-action:none;}
-      .ap-title-bar:active { cursor:grabbing; }
+      .ap-title-bar { display:flex; flex-direction:column; align-items:center; margin-bottom:10px; user-select:none;}
       .ap-title { font-size:22px; font-weight:800; letter-spacing:3px;
         background:linear-gradient(90deg,#00ff88,#00d9ff); -webkit-background-clip:text;
         background-clip:text; color:transparent; }
@@ -146,7 +203,7 @@ export function createUI() {
       .ap-status-ring circle { fill:none; stroke-width:6; }
       .ap-status-bg { stroke:#232530; }
       .ap-status-fg { stroke:#00ff88; stroke-linecap:round; transform:rotate(-90deg); transform-origin:50% 50%; transition:stroke-dashoffset 0.5s;}
-      .ap-status-line { display:flex; align-items:center; gap:8px; justify-content:flex-start; margin-top:8px;}
+      .ap-status-line { display:flex; align-items:center; gap:8px; justify-content:center; margin-top:8px;}
       .ap-status-dot { width:16px; height:16px; border-radius:50%; background:#ff3355; flex-shrink:0; transition:background 0.2s;}
       .ap-status-dot.on { background:#00ff88; box-shadow:0 0 8px #00ff88;}
       .ap-status-ver { font-size:12px; color:#8aa; }
@@ -421,4 +478,4 @@ function restorePanelPosition() {
       panelWrap.style.top = pos.top;
     }
   } catch (e) {}
-  }
+     }
