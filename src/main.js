@@ -59,8 +59,8 @@ function stopObserver() { if (observer) { observer.disconnect(); observer = null
 async function runStartupCommands() {
   isStartupRunning = true;
   const commands = [
-    { cmd: 'owo lb all', feature: 'lootbox' },
-    { cmd: 'owo wc all', feature: 'crate' },
+    { cmd: 'owo lb all', feature: 'autoItems' },
+    { cmd: 'owo wc all', feature: 'autoItems' },
     { cmd: 'owo pray', feature: 'pray' }
   ];
   for (const { cmd, feature } of commands) {
@@ -86,9 +86,9 @@ async function huntBattleLoop() {
     lastPrayTime = Date.now();
   }
   if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
-    await sendDiscordMessage('owo lb all', 'lootbox');
+    await sendDiscordMessage('owo lb all', 'autoItems');
     await sleep(getHumanDelay(2500, 4000));
-    await sendDiscordMessage('owo wc all', 'crate');
+    await sendDiscordMessage('owo wc all', 'autoItems');
   }
   huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
@@ -121,7 +121,6 @@ async function startBot() {
   updateStartStopButton(true);
   resetCommandIndicators();
   resetGems();
-  resetRuntime();
 
   startKeepAlive();
   emitCommandStatus('keepAlive', 'success');
@@ -161,7 +160,6 @@ function stopBot() {
   if (gambleTimer) clearTimeout(gambleTimer);
   emitLog('Bot stopped.', 'warn');
   emitStatus(0, 'idle');
-  resetRuntime();
 }
 
 function fullReset() {
