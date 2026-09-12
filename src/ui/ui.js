@@ -1,11 +1,12 @@
 import { CONFIG } from '../core/config.js';
 
 const VERSION = '1.0.0';
-const LOGO_URL = 'https://cdn.jsdelivr.net/gh/FlummoxGamer/Auto-Pulse@main/assets/logo.png';
+const LOGO_URL = 'https://raw.githubusercontent.com/FlummoxGamer/Auto-Pulse/main/assets/logo.png';
 
 let callbacks = { start: null, stop: null, isRunning: () => false, resetBankroll: null };
 let panel = null;
 let panelWrap = null;
+let btnWrap = null;
 let btn = null;
 let startBtn = null;
 let statusRing = null;
@@ -46,28 +47,54 @@ function makeWavePath(state) {
 }
 
 export function createUI() {
+  // ---------- GEAR BUTTON (no rotation, wrapper with rotating border) ----------
+  btnWrap = document.createElement('div');
+  btnWrap.id = 'ap-ui-btn-wrap';
+  btnWrap.style.cssText = `
+    position:fixed;bottom:90px;right:20px;width:60px;height:60px;
+    border-radius:50%;cursor:pointer;z-index:9999;
+    padding:3px;box-sizing:border-box;
+    background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
+    background-size:100% 100%;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 4px 12px rgba(0,255,136,0.35);
+  `;
+
+  const btnInner = document.createElement('div');
+  btnInner.style.cssText = `
+    position:absolute;inset:3px;border-radius:50%;
+    background:#0d0d14;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  `;
+
   btn = document.createElement('img');
   btn.id = 'ap-ui-btn';
   btn.src = LOGO_URL;
   btn.style.cssText = `
-    position:fixed;bottom:90px;right:20px;width:56px;height:56px;
-    border-radius:50%;cursor:pointer;z-index:9999;
-    object-fit:cover;padding:3px;box-sizing:border-box;
-    background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
-    animation: ap-rgb-spin 4s linear infinite;
-    box-shadow:0 4px 12px rgba(0,255,136,0.35);
+    width:100%;height:100%;border-radius:50%;
+    object-fit:cover;display:block;
   `;
-  document.body.appendChild(btn);
+  btn.onerror = () => {
+    btn.style.display = 'none';
+    btnInner.style.background = 'linear-gradient(135deg, #00ff88, #00d9ff)';
+  };
 
+  btnInner.appendChild(btn);
+  btnWrap.appendChild(btnInner);
+  document.body.appendChild(btnWrap);
+
+  // ---------- PANEL (no rotation, wrapper has the border) ----------
   panelWrap = document.createElement('div');
   panelWrap.id = 'ap-ui-wrap';
   panelWrap.style.cssText = `
     position:fixed;bottom:160px;right:20px;width:520px;
     padding:2px;border-radius:16px;
-    background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
-    animation: ap-rgb-spin 8s linear infinite;
+    background:linear-gradient(#0d0d14,#0d0d14) padding-box,
+               conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88) border-box;
     display:none;z-index:9998;
     box-shadow:0 8px 30px rgba(0,0,0,0.6);
+    box-sizing:border-box;
   `;
 
   panel = document.createElement('div');
@@ -81,7 +108,6 @@ export function createUI() {
 
   panel.innerHTML = `
     <style>
-      @keyframes ap-rgb-spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
       @keyframes ap-pulse { 0%{stroke-dashoffset:0} 100%{stroke-dashoffset:-60} }
       @keyframes ap-line-dash { 0%{stroke-dashoffset:0} 100%{stroke-dashoffset:-24} }
       .ap-grid { display:grid; grid-template-columns: 160px 1fr 160px; gap:10px;
@@ -126,6 +152,11 @@ export function createUI() {
       .ap-status-ver { font-size:12px; color:#8aa; }
       .ap-tracker-list { font-size:12px; line-height:1.6; font-family:monospace;}
       .ap-btn-row { display:flex; gap:8px; height:100%; align-items:stretch;}
+      .ap-logo-img { max-width:100%; max-height:100%; border-radius:8px; display:block;}
+      .ap-logo-fallback { width:100%; height:100%; border-radius:8px;
+        background:linear-gradient(135deg,#00ff88,#00d9ff);
+        display:flex; align-items:center; justify-content:center;
+        font-size:36px; color:#0d0d14; font-weight:800; }
     </style>
 
     <div class="ap-title-bar" id="ap-drag-handle">
@@ -155,7 +186,9 @@ export function createUI() {
       </div>
 
       <div class="ap-card" style="grid-area:logo; height:160px; display:flex; align-items:center; justify-content:center;">
-        <img id="ap-logo-card" src="${LOGO_URL}" alt="logo" style="max-width:100%; max-height:100%; border-radius:8px;"/>
+        <img id="ap-logo-card" class="ap-logo-img" src="${LOGO_URL}" alt="logo"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"/>
+        <div class="ap-logo-fallback" style="display:none;">AP</div>
       </div>
 
       <div class="ap-card" style="grid-area:buttons; min-height:70px;">
@@ -210,7 +243,7 @@ export function createUI() {
 
   buildToggles();
 
-  btn.addEventListener('click', () => {
+  btnWrap.addEventListener('click', () => {
     panelWrap.style.display = panelWrap.style.display === 'block' ? 'none' : 'block';
   });
 
@@ -388,4 +421,4 @@ function restorePanelPosition() {
       panelWrap.style.top = pos.top;
     }
   } catch (e) {}
-    }
+  }
