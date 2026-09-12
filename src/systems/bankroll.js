@@ -2,9 +2,12 @@ import { CONFIG } from '../core/config.js';
 import { sendDiscordMessage, parseBalance, sleep } from '../core/utils.js';
 
 export const stats = {
-  hunt: 0, battle: 0,
-  cfWins: 0, cfTotal: 0,
-  owo: 0,
+  hunt: 0,
+  battle: 0,
+  cfWins: 0,
+  cfTotal: 0,
+  cash: 0,
+  profit: 0,
   runtimeSeconds: 0
 };
 
@@ -16,7 +19,7 @@ export const bankroll = {
   profitTarget: null,
 
   async init() {
-    await sendDiscordMessage('owo cash', 'bankroll', true);
+    await sendDiscordMessage('owo cash', 'cash', true);
     await sleep(3000);
     const chat = document.querySelector('ol[class*="scroller"]');
     const msgs = chat ? chat.querySelectorAll('li[class*="message"]') : [];
@@ -26,7 +29,7 @@ export const bankroll = {
       this.sessionStart = bal;
       this.sessionBudget = Math.round(bal * CONFIG.BANKROLL_PERCENT);
       this.profitTarget = Math.round(bal * CONFIG.PROFIT_TARGET_PERCENT);
-      stats.owo = bal;
+      stats.cash = bal;
     }
   },
 
