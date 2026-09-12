@@ -21,10 +21,7 @@ let logsEl = null;
 let trackerEl = null;
 let statusTextEl = null;
 let statusDotEl = null;
-let versionEl = null;
-let cdHuntEl = null;
-let cdBattleEl = null;
-let cdCFEl = null;
+let cdHuntEl = null, cdBattleEl = null, cdCFEl = null, cdPrayEl = null, cdItemEl = null;
 let runtimeSec = 0;
 let runtimeTimer = null;
 let cdTimer = null;
@@ -32,8 +29,7 @@ let logoBlobUrl = null;
 
 let commandStates = {
   hunt: 'idle', battle: 'idle', coinflip: 'idle', pray: 'idle',
-  autoGems: 'idle', autoItems: 'idle', keepAlive: 'idle',
-  cash: 'idle', lootbox: 'idle', crate: 'idle'
+  autoGems: 'idle', autoItems: 'idle', keepAlive: 'idle'
 };
 const rowEls = {};
 
@@ -42,14 +38,10 @@ function fetchLogoAsBlob() {
     if (typeof GM_xmlhttpRequest === 'undefined') { resolve(null); return; }
     try {
       GM_xmlhttpRequest({
-        method: 'GET',
-        url: LOGO_URL,
-        responseType: 'blob',
-        timeout: 10000,
+        method: 'GET', url: LOGO_URL, responseType: 'blob', timeout: 10000,
         onload: (res) => {
           if (res.status === 200 && res.response) {
-            try { resolve(URL.createObjectURL(res.response)); }
-            catch (e) { resolve(null); }
+            try { resolve(URL.createObjectURL(res.response)); } catch (e) { resolve(null); }
           } else { resolve(null); }
         },
         onerror: () => resolve(null),
@@ -97,8 +89,15 @@ function makeWavePath(state) {
   return `<line x1="0" y1="6" x2="42" y2="6" stroke="#4a4a55" stroke-width="1.8"/>`;
 }
 
+function fmtCooldown(sec) {
+  if (sec <= 0) return 'Ready';
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
 export function createUI() {
-  // GEAR BUTTON
   btnWrap = document.createElement('div');
   btnWrap.id = 'ap-ui-btn-wrap';
   btnWrap.style.cssText = `
@@ -108,6 +107,7 @@ export function createUI() {
     background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 4px 12px rgba(0,255,136,0.35);
+    animation: ap-hue 5s linear infinite;
   `;
   btnInner = document.createElement('div');
   btnInner.style.cssText = `
@@ -126,7 +126,6 @@ export function createUI() {
   btnWrap.appendChild(btnInner);
   document.body.appendChild(btnWrap);
 
-  // PANEL
   panelWrap = document.createElement('div');
   panelWrap.id = 'ap-ui-wrap';
   panelWrap.style.cssText = `
@@ -137,6 +136,8 @@ export function createUI() {
     display:none;z-index:9998;
     box-shadow:0 8px 30px rgba(0,0,0,0.6);
     box-sizing:border-box;
+    animation: ap-hue 8s linear infinite;
+    will-change: transform;
   `;
 
   panel = document.createElement('div');
@@ -165,25 +166,51 @@ export function createUI() {
         75%  { opacity: 1; }
         100% { opacity: 0; transform: translateX(-30px) scaleX(-1); }
       }
+      @keyframes ap-card-rgb {
+        0%   { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+      }
       .ap-grid { display:grid; grid-template-columns: 170px 1fr 170px; gap:10px;
         grid-template-areas:
           "status logo runtime"
           "core buttons tracker"
           "core logs logs"; }
-      .ap-card { background:#15161c; border:1px solid #232530; border-radius:10px; padding:10px; box-sizing:border-box; position:relative;}
 
-      /* Corner drag handles */
-      .ap-corner { position:absolute; width:26px; height:26px; cursor:move; z-index:20; }
-      .ap-corner-tl { top:0; left:0; border-top:3px solid #00ff88; border-left:3px solid #00ff88; border-top-left-radius:14px; }
-      .ap-corner-tr { top:0; right:0; border-top:3px solid #00d9ff; border-right:3px solid #00d9ff; border-top-right-radius:14px; }
-      .ap-corner-bl { bottom:0; left:0; border-bottom:3px solid #a855f7; border-left:3px solid #a855f7; border-bottom-left-radius:14px; }
-      .ap-corner-br { bottom:0; right:0; border-bottom:3px solid #ff3355; border-right:3px solid #ff3355; border-bottom-right-radius:14px; }
+      /* RGB border for every card via ::before pseudo element */
+      .ap-card {
+        position:relative;
+        background:#15161c;
+        border-radius:12px;
+        padding:10px;
+        box-sizing:border-box;
+      }
+      .ap-card::before {
+        content:'';
+        position:absolute;
+        inset:-2px;
+        border-radius:14px;
+        background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
+        z-index:-1;
+        animation: ap-card-rgb 4s linear infinite;
+      }
+      .ap-card-inner { position:relative; z-index:1; background:#15161c; border-radius:10px; padding:0; }
 
-      /* Title + corner pulses */
+      .ap-corner { position:absolute; width:26px; height:26px; cursor:move; z-index:20; touch-action:none; }
+      .ap-corner-tl { top:-2px; left:-2px; border-top:3px solid #00ff88; border-left:3px solid #00ff88; border-top-left-radius:14px; }
+      .ap-corner-tr { top:-2px; right:-2px; border-top:3px solid #00d9ff; border-right:3px solid #00d9ff; border-top-right-radius:14px; }
+      .ap-corner-bl { bottom:-2px; left:-2px; border-bottom:3px solid #a855f7; border-left:3px solid #a855f7; border-bottom-left-radius:14px; }
+      .ap-corner-br { bottom:-2px; right:-2px; border-bottom:3px solid #ff3355; border-right:3px solid #ff3355; border-bottom-right-radius:14px; }
+
       .ap-title-bar { position:relative; height:44px; display:flex; align-items:center; justify-content:center; margin-bottom:12px; overflow:hidden;}
       .ap-title { font-size:22px; font-weight:800; letter-spacing:4px; z-index:2;
-        background:linear-gradient(90deg,#00ff88,#00d9ff); -webkit-background-clip:text;
-        background-clip:text; color:transparent; }
+        background:linear-gradient(90deg,#00ff88,#00d9ff,#a855f7,#ff3355,#00ff88);
+        background-size:300% 100%;
+        -webkit-background-clip:text; background-clip:text; color:transparent;
+        animation: ap-title-slide 4s linear infinite; }
+      @keyframes ap-title-slide {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 300% 50%; }
+      }
       .ap-corner-pulse {
         position:absolute; top:50%; width:110px; height:18px;
         transform:translateY(-50%); pointer-events:none;
@@ -192,25 +219,28 @@ export function createUI() {
       .ap-corner-pulse-r { right:0; animation: ap-slide-r 2.8s ease-in-out infinite; }
       .ap-corner-pulse path { fill:none; stroke:#00ff88; stroke-width:1.6; }
 
-      .ap-toggle-row { display:flex; align-items:center; gap:6px; padding:4px 0; font-size:12px;}
+      .ap-toggle-row { display:flex; align-items:center; gap:6px; padding:5px 0; font-size:12px;}
       .ap-switch { position:relative; width:26px; height:13px; background:#333; border-radius:7px; cursor:pointer; transition:0.2s; flex-shrink:0;}
       .ap-switch.on { background:#00ff88; }
       .ap-switch::after { content:''; position:absolute; top:1px; left:1px; width:11px; height:11px;
         background:#fff; border-radius:50%; transition:0.2s;}
       .ap-switch.on::after { left:14px; }
-      .ap-switch.hidden { visibility:hidden; }
       .ap-wave { flex:1; height:14px; min-width:0; }
 
-      /* Card buttons */
-      .ap-btn { border:1px solid #232530; border-radius:8px; padding:12px 8px; cursor:pointer; font-weight:700;
-        flex:1 1 0; min-width:0; font-size:13px; background:#15161c; color:#eee;
-        transition:0.2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-sizing:border-box;}
-      .ap-btn:hover { border-color:#00ff88; }
+      .ap-btn { position:relative; border:1px solid #232530; border-radius:8px; padding:12px 8px;
+        cursor:pointer; font-weight:700; flex:1 1 0; min-width:0; font-size:13px;
+        background:#15161c; color:#eee; transition:0.2s;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-sizing:border-box;
+        z-index:1;}
+      .ap-btn::before {
+        content:''; position:absolute; inset:-2px; border-radius:10px;
+        background:conic-gradient(from 0deg, #00ff88, #00d9ff, #a855f7, #ff3355, #00ff88);
+        z-index:-1; animation: ap-card-rgb 4s linear infinite;
+      }
       .ap-start { color:#00ff88; }
-      .ap-start.stop { color:#ff3355; border-color:#ff3355; }
-      .ap-reset { color:#f39c12; }
+      .ap-start.stop { color:#ff3355; }
 
-      .ap-logs { height:100%; min-height:150px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.4;}
+      .ap-logs { height:150px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.4; padding-right:4px;}
       .ap-log-info { color:#8aa; }
       .ap-log-success { color:#00ff88; }
       .ap-log-warn { color:#ffcc00; }
@@ -257,61 +287,77 @@ export function createUI() {
 
     <div class="ap-grid">
       <div class="ap-card" style="grid-area:status;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span style="font-size:12px; color:#8aa;">Status</span>
-          <span class="ap-status-ver" id="ap-status-version">V${VERSION}</span>
-        </div>
-        <svg class="ap-status-ring" viewBox="0 0 100 100">
-          <circle class="ap-status-bg" cx="50" cy="50" r="44"/>
-          <circle class="ap-status-fg" cx="50" cy="50" r="44"
-            stroke-dasharray="276" stroke-dashoffset="276" id="ap-status-fg"/>
-        </svg>
-        <div class="ap-status-line">
-          <div class="ap-status-dot" id="ap-status-dot"></div>
-          <span class="ap-status-ver" id="ap-status-text">Idle</span>
+        <div class="ap-card-inner">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; color:#8aa;">Status</span>
+            <span class="ap-status-ver" id="ap-status-version">V${VERSION}</span>
+          </div>
+          <svg class="ap-status-ring" viewBox="0 0 100 100">
+            <circle class="ap-status-bg" cx="50" cy="50" r="44"/>
+            <circle class="ap-status-fg" cx="50" cy="50" r="44"
+              stroke-dasharray="276" stroke-dashoffset="276" id="ap-status-fg"/>
+          </svg>
+          <div class="ap-status-line">
+            <div class="ap-status-dot" id="ap-status-dot"></div>
+            <span class="ap-status-ver" id="ap-status-text">Idle</span>
+          </div>
         </div>
       </div>
 
       <div class="ap-card" style="grid-area:core;">
-        <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Core commands</div>
-        <div id="ap-toggles"></div>
+        <div class="ap-card-inner">
+          <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Core commands</div>
+          <div id="ap-toggles"></div>
+        </div>
       </div>
 
       <div class="ap-card" style="grid-area:logo; height:160px; display:flex; align-items:center; justify-content:center;">
-        <img id="ap-logo-card" class="ap-logo-img" src="${LOGO_URL}" alt="logo"
-             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"/>
-        <div class="ap-logo-fallback" style="display:none;">AP</div>
+        <div class="ap-card-inner" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+          <img id="ap-logo-card" class="ap-logo-img" src="${LOGO_URL}" alt="logo"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"/>
+          <div class="ap-logo-fallback" style="display:none;">AP</div>
+        </div>
       </div>
 
       <div class="ap-card" style="grid-area:buttons; min-height:70px;">
-        <div class="ap-btn-row">
-          <button class="ap-btn ap-start" id="ap-start-btn">Start</button>
-          <button class="ap-btn ap-reset" id="ap-reset-btn">Reset</button>
+        <div class="ap-card-inner" style="height:100%;">
+          <div class="ap-btn-row">
+            <button class="ap-btn ap-start" id="ap-start-btn">Start</button>
+            <button class="ap-btn ap-reset" id="ap-reset-btn">Reset</button>
+          </div>
         </div>
       </div>
 
       <div class="ap-card" style="grid-area:runtime;">
-        <div style="font-size:12px; color:#8aa;">Runtime</div>
-        <div id="ap-runtime" style="font-size:22px; font-weight:700; text-align:center; color:#00ff88; margin:4px 0;">00:00:00</div>
-        <div class="ap-cd-row">Hunt <span class="ap-cd-val" id="ap-cd-hunt">-</span></div>
-        <div class="ap-cd-row">Battle <span class="ap-cd-val" id="ap-cd-battle">-</span></div>
-        <div class="ap-cd-row">CF <span class="ap-cd-val" id="ap-cd-cf">-</span></div>
+        <div class="ap-card-inner">
+          <div style="font-size:12px; color:#8aa;">Runtime</div>
+          <div id="ap-runtime" style="font-size:22px; font-weight:700; text-align:center; color:#00ff88; margin:4px 0;">00:00:00</div>
+          <div class="ap-cd-row">Hunt <span class="ap-cd-val" id="ap-cd-hunt">Ready</span></div>
+          <div class="ap-cd-row">Battle <span class="ap-cd-val" id="ap-cd-battle">Ready</span></div>
+          <div class="ap-cd-row">CF <span class="ap-cd-val" id="ap-cd-cf">Ready</span></div>
+          <div class="ap-cd-row">Pray <span class="ap-cd-val" id="ap-cd-pray">Ready</span></div>
+          <div class="ap-cd-row">Items <span class="ap-cd-val" id="ap-cd-items">Ready</span></div>
+        </div>
       </div>
 
       <div class="ap-card" style="grid-area:tracker; min-height:70px;">
-        <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Tracker</div>
-        <div id="ap-tracker" class="ap-tracker-list">
-          <div>hunt - 0</div>
-          <div>battle - 0</div>
-          <div>cf - 0/0</div>
-          <div>cash - 0</div>
-          <div>profit - <span class="val-pos">+0</span></div>
+        <div class="ap-card-inner">
+          <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Tracker</div>
+          <div id="ap-tracker" class="ap-tracker-list">
+            <div>hunt - 0</div>
+            <div>battle - 0</div>
+            <div>cf - 0/0</div>
+            <div>cash - 0</div>
+            <div>profit - <span class="val-pos">+0</span></div>
+          </div>
         </div>
       </div>
 
       <div class="ap-card" style="grid-area:logs; display:flex; flex-direction:column;">
-        <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Logs</div>
-        <div class="ap-logs" id="ap-logs"></div>
+        <div class="ap-card-inner" style="display:flex; flex-direction:column; height:100%;">
+          <div style="font-size:12px; color:#8aa; margin-bottom:6px;">Logs</div>
+          <div class="ap-logs" id="ap-logs"></div>
+        </div>
       </div>
     </div>
   `;
@@ -338,7 +384,8 @@ export function createUI() {
   cdHuntEl = panel.querySelector('#ap-cd-hunt');
   cdBattleEl = panel.querySelector('#ap-cd-battle');
   cdCFEl = panel.querySelector('#ap-cd-cf');
-  versionEl = panel.querySelector('#ap-status-version');
+  cdPrayEl = panel.querySelector('#ap-cd-pray');
+  cdItemEl = panel.querySelector('#ap-cd-items');
 
   buildToggles();
 
@@ -360,48 +407,37 @@ export function createUI() {
     }
   });
 
-  // Attach corner drag handles ONLY
-  panel.querySelectorAll('.ap-corner').forEach(h => {
-    attachDrag(h);
-  });
+  panel.querySelectorAll('.ap-corner').forEach(h => attachDrag(h));
 }
 
 function buildToggles() {
   const container = panel.querySelector('#ap-toggles');
   const items = [
-    { label: 'Hunt', key: 'ENABLE_HUNT', stateKey: 'hunt', toggle: true },
-    { label: 'Battle', key: 'ENABLE_BATTLE', stateKey: 'battle', toggle: true },
-    { label: 'Coinflip', key: 'ENABLE_COINFLIP', stateKey: 'coinflip', toggle: true },
-    { label: 'Pray', key: 'ENABLE_PRAY', stateKey: 'pray', toggle: true },
-    { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS', stateKey: 'autoGems', toggle: true },
-    { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS', stateKey: 'autoItems', toggle: true },
-    { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE', stateKey: 'keepAlive', toggle: true },
-    { label: 'Cash', key: null, stateKey: 'cash', toggle: false },
-    { label: 'Lootbox', key: null, stateKey: 'lootbox', toggle: false },
-    { label: 'Crate', key: null, stateKey: 'crate', toggle: false }
+    { label: 'Hunt', key: 'ENABLE_HUNT', stateKey: 'hunt' },
+    { label: 'Battle', key: 'ENABLE_BATTLE', stateKey: 'battle' },
+    { label: 'Coinflip', key: 'ENABLE_COINFLIP', stateKey: 'coinflip' },
+    { label: 'Pray', key: 'ENABLE_PRAY', stateKey: 'pray' },
+    { label: 'Auto Gems', key: 'ENABLE_AUTO_GEMS', stateKey: 'autoGems' },
+    { label: 'Auto Items', key: 'ENABLE_AUTO_ITEMS', stateKey: 'autoItems' },
+    { label: 'Keep Alive', key: 'ENABLE_KEEP_ALIVE', stateKey: 'keepAlive' }
   ];
 
   items.forEach(it => {
     const row = document.createElement('div');
     row.className = 'ap-toggle-row';
-    const swHTML = it.toggle
-      ? `<div class="ap-switch ${CONFIG[it.key] ? 'on' : ''}" data-key="${it.key}"></div>`
-      : `<div class="ap-switch hidden"></div>`;
     row.innerHTML = `
-      ${swHTML}
+      <div class="ap-switch ${CONFIG[it.key] ? 'on' : ''}" data-key="${it.key}"></div>
       <span style="flex:0 0 74px;">${it.label}</span>
       <svg class="ap-wave" viewBox="0 0 42 12" preserveAspectRatio="none">
         ${makeWavePath(commandStates[it.stateKey])}
       </svg>
     `;
-    if (it.toggle) {
-      const sw = row.querySelector('.ap-switch');
-      sw.addEventListener('click', () => {
-        CONFIG[it.key] = !CONFIG[it.key];
-        sw.classList.toggle('on', CONFIG[it.key]);
-        addLog(`${it.label} → ${CONFIG[it.key] ? 'ON' : 'OFF'}`, 'info');
-      });
-    }
+    const sw = row.querySelector('.ap-switch');
+    sw.addEventListener('click', () => {
+      CONFIG[it.key] = !CONFIG[it.key];
+      sw.classList.toggle('on', CONFIG[it.key]);
+      addLog(`${it.label} → ${CONFIG[it.key] ? 'ON' : 'OFF'}`, 'info');
+    });
     rowEls[it.stateKey] = row.querySelector('.ap-wave');
     container.appendChild(row);
   });
@@ -428,7 +464,7 @@ export function addLog(msg, type = 'info') {
   line.textContent = `[${time}] ${msg}`;
   logsEl.appendChild(line);
   logsEl.scrollTop = logsEl.scrollHeight;
-  while (logsEl.children.length > 100) logsEl.removeChild(logsEl.firstChild);
+  while (logsEl.children.length > 200) logsEl.removeChild(logsEl.firstChild);
 }
 
 export function clearLogs() {
@@ -498,12 +534,11 @@ function startCooldownTimer() {
   if (cdTimer) clearInterval(cdTimer);
   cdTimer = setInterval(() => {
     if (!cdHuntEl) return;
-    const h = getRemainingCooldown('owo h');
-    const b = getRemainingCooldown('owo b');
-    const c = getRemainingCooldown('owo cf');
-    cdHuntEl.textContent = h > 0 ? `${h}s` : 'Ready';
-    cdBattleEl.textContent = b > 0 ? `${b}s` : 'Ready';
-    cdCFEl.textContent = c > 0 ? `${c}s` : 'Ready';
+    cdHuntEl.textContent = fmtCooldown(getRemainingCooldown('owo h'));
+    cdBattleEl.textContent = fmtCooldown(getRemainingCooldown('owo b'));
+    cdCFEl.textContent = fmtCooldown(getRemainingCooldown('owo cf'));
+    cdPrayEl.textContent = fmtCooldown(getRemainingCooldown('owo pray'));
+    cdItemEl.textContent = fmtCooldown(getRemainingCooldown('owo lb all'));
   }, 1000);
 }
 
@@ -512,31 +547,42 @@ export function resetRuntime() {
   updateRuntimeUI(0);
 }
 
+// --- Smooth drag using transform ---
 function attachDrag(handle) {
   let dragging = false;
-  let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+  let startX = 0, startY = 0, origX = 0, origY = 0;
 
   handle.addEventListener('pointerdown', (e) => {
     dragging = true;
     const rect = panelWrap.getBoundingClientRect();
+    // Lock to current position via left/top, then use transform for drag
     panelWrap.style.right = 'auto';
     panelWrap.style.bottom = 'auto';
-    panelWrap.style.left = rect.left + 'px';
-    panelWrap.style.top = rect.top + 'px';
-    startX = e.clientX; startY = e.clientY;
-    origLeft = rect.left; origTop = rect.top;
+    panelWrap.style.left = '0px';
+    panelWrap.style.top = '0px';
+    panelWrap.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+    startX = e.clientX;
+    startY = e.clientY;
+    origX = rect.left;
+    origY = rect.top;
     e.preventDefault();
     e.stopPropagation();
   });
+
   window.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    panelWrap.style.left = (origLeft + (e.clientX - startX)) + 'px';
-    panelWrap.style.top = (origTop + (e.clientY - startY)) + 'px';
-  });
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    panelWrap.style.transform = `translate(${origX + dx}px, ${origY + dy}px)`;
+  }, { passive: true });
+
   window.addEventListener('pointerup', () => {
     if (!dragging) return;
     dragging = false;
-    try { GM_setValue('panel_pos', { left: panelWrap.style.left, top: panelWrap.style.top }); } catch (e) {}
+    try {
+      const rect = panelWrap.getBoundingClientRect();
+      GM_setValue('panel_pos', { left: rect.left + 'px', top: rect.top + 'px' });
+    } catch (e) {}
   });
 }
 
@@ -546,8 +592,9 @@ function restorePanelPosition() {
     if (pos && pos.left && pos.top) {
       panelWrap.style.right = 'auto';
       panelWrap.style.bottom = 'auto';
-      panelWrap.style.left = pos.left;
-      panelWrap.style.top = pos.top;
+      panelWrap.style.left = '0px';
+      panelWrap.style.top = '0px';
+      panelWrap.style.transform = `translate(${pos.left}, ${pos.top})`;
     }
   } catch (e) {}
-}
+              }
