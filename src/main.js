@@ -1,10 +1,10 @@
 import { CONFIG } from './core/config.js';
-import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitStatus, getToken } from './core/utils.js';
+import { getHumanDelay, sleep, sendDiscordMessage, scanChat, playNotificationSound, triggerNotification, setHardStop, isHardStopped, emitLog, emitTracker, emitStatus, emitCommandStatus, getToken } from './core/utils.js';
 import { startKeepAlive, stopKeepAlive } from './core/keepalive.js';
 import { playCoinflip } from './games/coinflip.js';
 import { bankroll, stats, resetCF } from './systems/bankroll.js';
 import { triggerAutoGems, resetGems } from './systems/autoGems.js';
-import { initUI, updateStartStopButton, resetRuntime, resetCommandIndicators } from './ui/ui.js';
+import { initUI, updateStartStopButton, resetRuntime, resetCommandIndicators, clearLogs } from './ui/ui.js';
 import { initWebSocketHook, startPolling, stopPolling } from './systems/dmScanner.js';
 
 let botStarted = false;
@@ -35,28 +35,15 @@ function startObserver() {
         }
 
         const text = (node.innerText || '').toLowerCase();
-
-        // Hunt counter — "hunt is empowered" is present on every successful hunt
-        if (text.includes('hunt is empowered')) {
-          stats.hunt++;
-          emitTracker(stats);
-        }
-
-        // Battle counter
-        if (text.includes('goes into battle')) {
-          stats.battle++;
-          emitTracker(stats);
-        }
-
-        // Balance — strict match
+        if (text.includes('hunt is empowered')) { stats.hunt++; emitTracker(stats); }
+        if (text.includes('goes into battle')) { stats.battle++; emitTracker(stats); }
         if (text.includes('cowoncy') && text.includes('you currently have')) {
           const match = text.match(/you currently have ([\d,]+) cowoncy/i);
           if (match) {
-            stats.owo = parseInt(match[1].replace(/,/g, ''));
+            stats.cash = parseInt(match[1].replace(/,/g, ''));
             emitTracker(stats);
           }
         }
-
         if (CONFIG.ENABLE_AUTO_GEMS) {
           const html = node.innerHTML || '';
           if (/hunt is empowered/i.test(text)) triggerAutoGems(html);
@@ -71,10 +58,14 @@ function stopObserver() { if (observer) { observer.disconnect(); observer = null
 
 async function runStartupCommands() {
   isStartupRunning = true;
-  const commands = ['owo lb all', 'owo wc all', 'owo pray'];
-  for (const cmd of commands) {
+  const commands = [
+    { cmd: 'owo lb all', feature: 'lootbox' },
+    { cmd: 'owo wc all', feature: 'crate' },
+    { cmd: 'owo pray', feature: 'pray' }
+  ];
+  for (const { cmd, feature } of commands) {
     if (!botStarted || isHardStopped) return;
-    await sendDiscordMessage(cmd, 'startup', true);
+    await sendDiscordMessage(cmd, feature, true);
     await sleep(getHumanDelay(CONFIG.STARTUP_DELAY_MIN, CONFIG.STARTUP_DELAY_MAX));
   }
   isStartupRunning = false;
@@ -95,9 +86,9 @@ async function huntBattleLoop() {
     lastPrayTime = Date.now();
   }
   if (CONFIG.ENABLE_AUTO_ITEMS && cycleCounter % 45 === 0) {
-    await sendDiscordMessage('owo lb all', 'autoItems');
+    await sendDiscordMessage('owo lb all', 'lootbox');
     await sleep(getHumanDelay(2500, 4000));
-    await sendDiscordMessage('owo wc all', 'autoItems');
+    await sendDiscordMessage('owo wc all', 'crate');
   }
   huntTimer = setTimeout(huntBattleLoop, getHumanDelay(CONFIG.HUNT_BATTLE_INTERVAL_MIN, CONFIG.HUNT_BATTLE_INTERVAL_MAX));
 }
@@ -131,21 +122,21 @@ async function startBot() {
   resetCommandIndicators();
   resetGems();
   resetRuntime();
+
   startKeepAlive();
+  emitCommandStatus('keepAlive', 'success');
+
   startObserver();
   startPolling(getToken, stopBot, () => botStarted);
 
   emitStatus(25, 'active');
   await bankroll.init();
   emitLog('Bankroll initialized.', 'success');
+
   emitStatus(50, 'active');
   lastPrayTime = Date.now();
   await runStartupCommands();
   emitLog('Startup commands done.', 'success');
-
-  emitStatus(75, 'active');
-  await sleep(5000);
-  emitLog('Settle complete.', 'success');
 
   emitStatus(100, 'active');
   emitLog('Bot started.', 'success');
@@ -160,7 +151,10 @@ function stopBot() {
   setHardStop(true);
   updateStartStopButton(false);
   resetCommandIndicators();
+
   stopKeepAlive();
+  emitCommandStatus('keepAlive', 'idle');
+
   stopObserver();
   stopPolling();
   if (huntTimer) clearTimeout(huntTimer);
@@ -168,6 +162,27 @@ function stopBot() {
   emitLog('Bot stopped.', 'warn');
   emitStatus(0, 'idle');
   resetRuntime();
+}
+
+function fullReset() {
+  if (botStarted) stopBot();
+
+  stats.hunt = 0;
+  stats.battle = 0;
+  stats.cfWins = 0;
+  stats.cfTotal = 0;
+  stats.cash = 0;
+  stats.profit = 0;
+  emitTracker(stats);
+
+  resetCF();
+  bankroll.reset();
+  resetGems();
+  resetRuntime();
+  resetCommandIndicators();
+  clearLogs();
+
+  emitLog('Full reset complete', 'success');
 }
 
 function init() {
@@ -179,7 +194,7 @@ function init() {
     start: startBot,
     stop: stopBot,
     isRunning: () => botStarted,
-    resetBankroll: () => { resetCF(); emitTracker(stats); }
+    fullReset: fullReset
   });
 }
 
