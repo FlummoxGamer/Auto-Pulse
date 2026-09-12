@@ -8,6 +8,7 @@ let panel = null;
 let panelWrap = null;
 let btnWrap = null;
 let btn = null;
+let btnInner = null;
 let startBtn = null;
 let statusRing = null;
 let runtimeEl = null;
@@ -25,7 +26,6 @@ let commandStates = {
 };
 const rowEls = {};
 
-// --- Fetch logo as blob via GM_xmlhttpRequest (bypasses Discord CSP) ---
 function fetchLogoAsBlob() {
   return new Promise((resolve) => {
     if (typeof GM_xmlhttpRequest === 'undefined') {
@@ -54,14 +54,8 @@ function fetchLogoAsBlob() {
             resolve(null);
           }
         },
-        onerror: (err) => {
-          console.warn('[UI] Logo fetch error:', err);
-          resolve(null);
-        },
-        ontimeout: () => {
-          console.warn('[UI] Logo fetch timeout');
-          resolve(null);
-        }
+        onerror: (err) => { console.warn('[UI] Logo fetch error:', err); resolve(null); },
+        ontimeout: () => { console.warn('[UI] Logo fetch timeout'); resolve(null); }
       });
     } catch (e) {
       console.warn('[UI] GM_xmlhttpRequest threw:', e);
@@ -76,12 +70,18 @@ export async function initUI(handlers) {
   startRuntimeTimer();
   restorePanelPosition();
 
-  // Fetch logo asynchronously, update all img tags when ready
   logoBlobUrl = await fetchLogoAsBlob();
   if (logoBlobUrl) {
-    const btnImg = document.getElementById('ap-ui-btn');
+    const gearImg = document.getElementById('ap-ui-btn');
     const cardImg = document.getElementById('ap-logo-card');
-    if (btnImg) btnImg.src = logoBlobUrl;
+
+    if (gearImg) {
+      gearImg.src = logoBlobUrl;
+      gearImg.style.display = 'block';   // ← reset display (was hidden after onerror)
+    }
+    if (btnInner) {
+      btnInner.style.background = '#0d0d14';  // ← reset background (was gradient after onerror)
+    }
     if (cardImg) {
       cardImg.src = logoBlobUrl;
       cardImg.style.display = 'block';
@@ -119,7 +119,7 @@ export function createUI() {
     box-shadow:0 4px 12px rgba(0,255,136,0.35);
   `;
 
-  const btnInner = document.createElement('div');
+  btnInner = document.createElement('div');
   btnInner.style.cssText = `
     position:absolute;inset:3px;border-radius:50%;
     background:#0d0d14;
@@ -478,4 +478,4 @@ function restorePanelPosition() {
       panelWrap.style.top = pos.top;
     }
   } catch (e) {}
-     }
+  }
